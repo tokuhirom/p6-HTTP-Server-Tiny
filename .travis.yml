@@ -1,0 +1,9 @@
+language: perl6
+perl6:
+  - latest
+install:
+  - rakudobrew build-panda
+  - panda --notests installdeps .
+script:
+  - PERL6LIB=$PWD/lib prove -e perl6 -r t/
+sudo: false

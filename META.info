@@ -1,0 +1,13 @@
+{
+  "name": "HTTP::Server::Tiny",
+  "source-url": "",
+  "author": "Tokuhiro Matsuno",
+  "provides": {
+    "HTTP::Server::Tiny": "lib/HTTP/Server/Tiny.pm6"
+  },
+  "depends": [
+    
+  ],
+  "description": "",
+  "version": "*"
+}
