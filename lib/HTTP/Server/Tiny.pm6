@@ -155,7 +155,7 @@ method handler($csock, Sub $app) {
         LEAVE { unlink $tmpfile }
         my $input = open("$tmpfile", :rw);
 
-        my $read = $env<CONTENT_LENGTH>.Int;
+        my $read = ($env<CONTENT_LENGTH>||0).Int;
 
         if $buf.elems > $header_len {
             my $b = $buf.subbuf($header_len);
