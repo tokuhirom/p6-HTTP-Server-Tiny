@@ -2,11 +2,29 @@ use v6;
 unit class HTTP::Server::Tiny;
 
 use Raw::Socket::INET;
+use NativeCall;
 
 has $.port = 80;
 has $.host = '127.0.0.1';
 
 has $!sock;
+
+module private {
+    our sub waitpid(Int $pid, CArray[int] $status, Int $options)
+            returns Int is native { ... }
+}
+
+my sub fork()
+    returns Int
+    is native { ... }
+
+sub waitpid(Int $pid, Int $options) {
+    my $status = CArray[int].new;
+    $status[0] = 0;
+    my $ret_pid = private::waitpid($pid, $status, $options);
+    return ($ret_pid, $status[0]);
+}
+
 
 method new($host, $port) {
     self.bless(host => $host, port => $port)!initialize;
@@ -25,7 +43,8 @@ method !initialize() {
 method localport() { $!sock.localport }
 
 method run(Sub $app) {
-    say "http server is ready: http://$.host:{$!sock.localport}/";
+    self!show-banner;
+
     loop {
         my $csock = $!sock.accept();
         LEAVE {
@@ -37,6 +56,43 @@ method run(Sub $app) {
         self.handler($csock, $app);
 
         CATCH { default { say "[ERROR] $_" } }
+    }
+    die "should not reach here";
+}
+
+method !show-banner() {
+    say "http server is ready: http://$.host:{$!sock.localport}/";
+}
+
+method run-shotgun(Str $filename) {
+    self!show-banner;
+
+    loop {
+        my $csock = $!sock.accept();
+
+        my $pid = fork();
+        if ($pid > 0) { # parent
+            $csock.close;
+            say "waiting child process...";
+            my ($got, $status) = waitpid($pid, 0);
+            say "child process was terminated: $got, $status";
+            if ($got < 0) {
+                die "waitpid failed";
+            }
+        } elsif ($pid == 0) { # child
+            LEAVE {
+                CATCH { default { say "[ERROR] $_" } }
+                say "closing socket";
+                $csock.close
+            }
+            self.handler($csock, sub ($env) {
+                my $app = EVALFILE($filename);
+                return $app($env);
+            });
+            exit 0;
+        } else {
+            die "fork failed";
+        }
     }
     die "should not reach here";
 }
