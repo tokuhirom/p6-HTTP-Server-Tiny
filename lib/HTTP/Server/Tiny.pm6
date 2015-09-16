@@ -41,7 +41,7 @@ method run($app) {
             if $done {
                 say 'got http header';
                 # TODO: chunked support
-                # TODO: use return value
+                # TODO: HTTP/1.1 support
                 my $res = $app($env);
                 my $resp_string = "HTTP/1.0 $res[0] perl6\r\n";
                 for @($res[1]) {
@@ -60,6 +60,7 @@ method run($app) {
                         }
                     }
                 } elsif $res[2].isa(IO) {
+                    # TODO: support IO response
                     die "IO is not supported yet";
                 } else {
                     die "3rd element of response object must be instance of Array or IO";
