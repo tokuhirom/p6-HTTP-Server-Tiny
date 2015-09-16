@@ -6,7 +6,7 @@
     "HTTP::Server::Tiny": "lib/HTTP/Server/Tiny.pm6"
   },
   "depends": [
-    
+        "LWP::Simple"
   ],
   "description": "",
   "version": "*"
