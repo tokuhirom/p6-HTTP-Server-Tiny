@@ -1,0 +1,6 @@
+use v6;
+
+sub app($env) {
+    return [200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]];
+}
+
