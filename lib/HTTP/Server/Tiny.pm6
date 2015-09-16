@@ -22,6 +22,8 @@ method !initialize() {
     self;
 }
 
+method localport() { $!sock.localport }
+
 method run($app) {
     say "http server is ready: http://$.host:{$!sock.localport}/";
     while my $csock = $!sock.accept() {
@@ -37,7 +39,8 @@ method run($app) {
             say "received: $received";
             # FIXME: only support utf8
             $buf ~= $tmpbuf.subbuf(0, $received).decode('utf-8');
-            my ($done, $env) = self.parse-http-request($buf);
+            my ($done, $env, $header_len) = self.parse-http-request($buf);
+            # TODO: support psgix.input
             if $done {
                 say 'got http header';
                 # TODO: chunked support
@@ -82,6 +85,7 @@ method parse-http-request(Str $buf) {
         ( ( <[ A..Z a..z - ]>+ ) \s* \: \s* (.*) \r\n )*
         \r\n
     / {
+        my $header_len = $<>.elems;
         my ($method, $path_info, $version) = @($/);
         my $env = {
             REQUEST_METHOD => $method.Str,
@@ -93,7 +97,7 @@ method parse-http-request(Str $buf) {
             $k = $k.uc;
             $env{'HTTP_' ~ $k} = $v;
         }
-        return (True, $env);
+        return (True, $env, $header_len);
     }
     return (False, );
 }
