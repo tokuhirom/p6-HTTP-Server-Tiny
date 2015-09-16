@@ -34,7 +34,8 @@ my $port = $server.localport;
 my $pid = fork();
 if $pid == 0 { # child
     $server.run(sub ($env) {
-        [200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]]
+        my $body = $env<psgi.input>.slurp-rest;
+        [200, ['Content-Type' => 'text/plain'], [$body.encode('utf-8')]]
     });
     exit;
 } elsif $pid > 0 { # parent
@@ -42,7 +43,7 @@ if $pid == 0 { # child
     my $content = LWP::Simple.post("http://127.0.0.1:$port/", {
         'content-type' => 'application/x-www-form-urlencoded'
     }, 'foo=bar');
-    say ($content eqv "hello\n" ?? "ok" !! "not ok") ~ " - content";
+    say ($content eqv "foo=bar" ?? "ok" !! "not ok") ~ " - content";
     kill($pid, SIGTERM);
     waitpid($pid, 0);
 } else {
