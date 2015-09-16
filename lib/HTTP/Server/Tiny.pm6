@@ -13,6 +13,8 @@ has %pids;
 
 has Bool $shown-banner;
 
+my Buf $http_header_end_marker = Buf.new(13, 10, 13, 10);
+
 module private {
     our sub waitpid(Int $pid, CArray[int] $status, Int $options)
             returns Int is native { ... }
@@ -135,7 +137,7 @@ method run-shotgun(Str $filename) {
 method handler($csock, Sub $app) {
     CATCH { default { say "[wtf]" } }
     say "receiving";
-    my $buf = '';
+    my $buf = Buf.new;
 
     my $tmpbuf = Buf.new;
     $tmpbuf[1023] = 0; # extend buffer
@@ -143,7 +145,7 @@ method handler($csock, Sub $app) {
         my $received = $csock.recv($tmpbuf, 1024, 0);
         say "received: $received";
         # FIXME: only support utf8
-        $buf ~= $tmpbuf.subbuf(0, $received).decode('utf-8');
+        $buf ~= $tmpbuf.subbuf(0, $received);
         my ($done, $env, $header_len) = self.parse-http-request($buf);
         # TODO: support psgix.input
         if $done {
@@ -196,25 +198,43 @@ method !send-response($csock, Array $res) {
 }
 
 # TODO: This code is just a shit. I should replace this by kazuho san's.
-method parse-http-request(Str $buf) {
-    if $buf ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)\r\n
-        ( ( <[ A..Z a..z - ]>+ ) \s* \: \s* (.*) \r\n )*
-        \r\n
-    / {
-        my $header_len = $<>.elems;
-        my ($method, $path_info, $version) = @($/);
-        my $env = {
-            REQUEST_METHOD => $method.Str,
-            PATH_INFO => $path_info.Str,
-        };
-        for @($/[3]) {
-            my ($k, $v) = @$_;
-            $k = $k.subst(/\-/, '_', :g);
-            $k = $k.uc;
-            $env{'HTTP_' ~ $k} = $v;
-        }
-        return (True, $env, $header_len);
+method parse-http-request(Blob $resp) {
+
+    my Int $header_end_pos = 0;
+    while ( $header_end_pos < $resp.bytes &&
+            $http_header_end_marker ne $resp.subbuf($header_end_pos, 4)  ) {
+        $header_end_pos++;
     }
+
+    if ($header_end_pos < $resp.bytes) {
+        my @header_lines = $resp.subbuf(
+            0, $header_end_pos
+        ).decode('ascii').split(/\r\n/);
+
+        my $env = { };
+
+        my Str $status_line = @header_lines.shift;
+        if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)/ {
+            $env<REQUEST_METHOD> = $/[0];
+            $env<PATH_INFO> = $/[1];
+        } else {
+            die "cannot parse http request: $status_line";
+        }
+
+        for @header_lines {
+            if $_ ~~ m/ ^^ ( <[ A..Z a..z - ]>+ ) \s* \: \s* (.+) $$ / {
+                my ($k, $v) = @($/);
+                $k = $k.subst(/\-/, '_', :g);
+                $k = $k.uc;
+                $env{'HTTP_' ~ $k} = $v;
+            } else {
+                die "invalid header: $_";
+            }
+        }
+
+        return (True, $env, $header_end_pos+4);
+    }
+
     return (False, );
 }
 
