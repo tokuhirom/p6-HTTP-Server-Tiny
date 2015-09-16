@@ -23,10 +23,12 @@ method !initialize() {
 }
 
 method run($app) {
-    say "http server is ready: http://$.host:$.port/";
+    say "http server is ready: http://$.host:{$!sock.localport}/";
     while my $csock = $!sock.accept() {
         say "receiving";
         my $buf = '';
+
+        LEAVE { $csock.close }
 
         my $tmpbuf = Buf.new;
         $tmpbuf[1023] = 0; # extend buffer
@@ -41,20 +43,39 @@ method run($app) {
                 # TODO: chunked support
                 # TODO: use return value
                 my $res = $app($env);
-                my $resp = "200 perl6\r\ncontent-type: text/plain\r\n\r\nhoge".encode('utf-8');
+                my $resp_string = "HTTP/1.0 $res[0] perl6\r\n";
+                for @($res[1]) {
+                    # FIXME: header split
+                    $resp_string ~= "{.key}: {.value}\r\n";
+                }
+                $resp_string ~= "\r\n";
+                my $resp = $resp_string.encode('ascii');
                 $csock.send($resp, $resp.elems, 0);
-                $csock.close();
-                $res.perl.say;
+                if $res[2].isa(Array) {
+                    for @($res[2]) -> $elem {
+                        if $elem.does(Blob) {
+                            $csock.send($elem, $elem.elems, 0);
+                        } else {
+                            die "response must be Array[Blob]. But {$elem.perl}";
+                        }
+                    }
+                } elsif $res[2].isa(IO) {
+                    die "IO is not supported yet";
+                } else {
+                    die "3rd element of response object must be instance of Array or IO";
+                }
                 last;
             } else {
                 $buf.say;
                 say 'not yet.';
             }
         }
+
+        CATCH { default { .say } }
     }
 }
 
-# This code is just a shit. I should replace this by kazuho san's.
+# TODO: This code is just a shit. I should replace this by kazuho san's.
 method parse-http-request(Str $buf) {
     if $buf ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)\r\n
         ( ( <[ A..Z a..z - ]>+ ) \s* \: \s* (.*) \r\n )*
