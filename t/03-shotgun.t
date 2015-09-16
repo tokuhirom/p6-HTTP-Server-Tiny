@@ -21,7 +21,7 @@ my $port = $server.localport;
 
 my $pid = fork();
 if $pid == 0 { # child
-    my $app = -> $env {
+    my $app = sub ($env) {
         my $bullet = EVALFILE("eg/hello.psgi6");
         $bullet($env);
     };

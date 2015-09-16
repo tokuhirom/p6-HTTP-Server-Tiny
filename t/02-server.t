@@ -21,7 +21,7 @@ my $port = $server.localport;
 
 my $pid = fork();
 if $pid == 0 { # child
-    $server.run(-> $env {
+    $server.run(sub ($env) {
         [200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]]
     });
     exit;

@@ -24,7 +24,7 @@ method !initialize() {
 
 method localport() { $!sock.localport }
 
-method run($app) {
+method run(Sub $app) {
     say "http server is ready: http://$.host:{$!sock.localport}/";
     loop {
         my $csock = $!sock.accept();
@@ -41,7 +41,7 @@ method run($app) {
     die "should not reach here";
 }
 
-method handler($csock, $app) {
+method handler($csock, Sub $app) {
     CATCH { default { say "[wtf]" } }
     say "receiving";
     my $buf = '';
