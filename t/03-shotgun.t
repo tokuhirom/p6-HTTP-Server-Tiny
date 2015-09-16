@@ -21,11 +21,7 @@ my $port = $server.localport;
 
 my $pid = fork();
 if $pid == 0 { # child
-    my $app = sub ($env) {
-        my $bullet = EVALFILE("eg/hello.psgi6");
-        $bullet($env);
-    };
-    $server.run($app);
+    $server.run-shotgun('eg/hello.psgi');
     die "should not reach here";
 } elsif $pid > 0 { # parent
     sleep 0.1;
