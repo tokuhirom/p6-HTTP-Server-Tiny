@@ -9,6 +9,10 @@ has $.host = '127.0.0.1';
 
 has $!sock;
 
+has %pids;
+
+has Bool $shown-banner;
+
 module private {
     our sub waitpid(Int $pid, CArray[int] $status, Int $options)
             returns Int is native { ... }
@@ -61,7 +65,38 @@ method run(Sub $app) {
 }
 
 method !show-banner() {
-    say "http server is ready: http://$.host:{$!sock.localport}/";
+    unless $!shown-banner {
+        say "http server is ready: http://$.host:{$!sock.localport}/";
+        $!shown-banner = True;
+    }
+}
+
+method run-prefork(Int $workers, Sub $app) {
+    self!show-banner;
+
+    for 1..$workers.Int {
+        self!spawn-worker($app);
+    }
+
+    loop {
+        my ($pid, $status) = waitpid(-1, 0);
+        if %pids{$pid}:exists {
+            %pids.delete($pid);
+            self!spawn-worker($app);
+        }
+    }
+}
+
+method !spawn-worker(Sub $app) {
+    my $pid = fork();
+    if $pid == 0 {
+        self.run($app);
+    } elsif $pid > 0 {
+        %pids{$pid} = True;
+        return;
+    } else {
+        die "fork failed";
+    }
 }
 
 method run-shotgun(Str $filename) {
