@@ -19,3 +19,5 @@ is $env<PATH_INFO>, "/";
     is $env<PATH_INFO>, "/";
     is $env<HTTP_CONTENT_TYPE>, "text/html";
 }
+
+done-testing;

@@ -1,6 +1,6 @@
 use v6;
 
-say "1..2";
+say "1..1";
 
 use NativeCall;
 use HTTP::Server::Tiny;
@@ -39,6 +39,7 @@ if $pid == 0 { # child
     sleep 0.1;
     my $content = LWP::Simple.get("http://127.0.0.1:$port/");
     say ($content eqv "hello\n" ?? "ok" !! "not ok") ~ " - content";
+    kill($pid, SIGTERM);
     waitpid($pid, 0);
 } else {
     die "fork failed";
