@@ -134,8 +134,10 @@ method run-shotgun(Str $filename) {
     die "should not reach here";
 }
 
+my sub nonce () { return (".{$*PID}." ~ 1000.rand.Int) }
+
 method handler($csock, Sub $app) {
-    CATCH { default { say "[wtf]" } }
+    CATCH { default { say "[wtf] $_: {.backtrace.full}" } }
     say "receiving";
     my $buf = Buf.new;
 
@@ -147,6 +149,28 @@ method handler($csock, Sub $app) {
         # FIXME: only support utf8
         $buf ~= $tmpbuf.subbuf(0, $received);
         my ($done, $env, $header_len) = self.parse-http-request($buf);
+
+        # TODO: secure File::Temp
+        my $tmpfile = $*TMPDIR.child("p6-httpd" ~ nonce());
+        LEAVE { unlink $tmpfile }
+        my $input = open("$tmpfile", :rw);
+
+        my $read = $env<CONTENT_LENGTH>.Int;
+
+        if $buf.elems > $header_len {
+            my $b = $buf.subbuf($header_len);
+            $input.write($b);
+            $read -= $b.elems;
+        }
+        while $read > 0 {
+            my $received = $csock.recv($tmpbuf, 1024, 0);
+            $input.write($tmpbuf.subbuf(0, $received));
+            $read -= $received;
+        }
+        $input.seek(0, 0); # rewind
+
+        $env<psgi.input> = $input;
+
         # TODO: support psgix.input
         if $done {
             say 'got http header';
@@ -215,8 +239,8 @@ method parse-http-request(Blob $resp) {
 
         my Str $status_line = @header_lines.shift;
         if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)/ {
-            $env<REQUEST_METHOD> = $/[0];
-            $env<PATH_INFO> = $/[1];
+            $env<REQUEST_METHOD> = $/[0].Str;
+            $env<PATH_INFO> = $/[1].Str;
         } else {
             die "cannot parse http request: $status_line";
         }
@@ -226,7 +250,10 @@ method parse-http-request(Blob $resp) {
                 my ($k, $v) = @($/);
                 $k = $k.subst(/\-/, '_', :g);
                 $k = $k.uc;
-                $env{'HTTP_' ~ $k} = $v;
+                if $k ne 'CONTENT_LENGTH' {
+                    $k = 'HTTP_' ~ $k;
+                }
+                $env{$k} = $v.Str;
             } else {
                 die "invalid header: $_";
             }
