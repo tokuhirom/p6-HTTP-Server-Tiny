@@ -8,8 +8,6 @@ use Test::Utils;
 use HTTP::Server::Tiny;
 use LWP::Simple; # bundled
 
-constant SIGTERM = 15;
-
 my $server = HTTP::Server::Tiny.new('127.0.0.1', 0);
 my $port = $server.localport;
 
