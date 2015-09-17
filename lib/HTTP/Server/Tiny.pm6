@@ -238,9 +238,17 @@ method parse-http-request(Blob $resp) {
         my $env = { };
 
         my Str $status_line = @header_lines.shift;
-        if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)/ {
+        if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)$/ {
             $env<REQUEST_METHOD> = $/[0].Str;
-            $env<PATH_INFO> = $/[1].Str;
+            my $path_query = $/[1];
+            if $path_query ~~ m/^ (.*?) [ \? (.*) ] $/ {
+                $env<PATH_INFO> = $/[0].Str;
+                if $/[1].defined {
+                    $env<QUERY_STRING> = $/[1].Str;
+                } else {
+                    $env<QUERY_STRING> = Mu;
+                }
+            }
         } else {
             die "cannot parse http request: $status_line";
         }
