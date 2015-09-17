@@ -4,6 +4,14 @@ unit class HTTP::Server::Tiny;
 use Raw::Socket::INET;
 use NativeCall;
 
+my class IO::Scalar::Empty {
+    method eof() { True }
+    method read(Int(Cool:D) $bytes) {
+        my $buf := buf8.new;
+        return $buf;
+    }
+}
+
 has $.port = 80;
 has $.host = '127.0.0.1';
 
@@ -146,30 +154,34 @@ method handler($csock, Sub $app) {
     loop {
         my $received = $csock.recv($tmpbuf, 1024, 0);
         say "received: $received";
-        # FIXME: only support utf8
         $buf ~= $tmpbuf.subbuf(0, $received);
         my ($done, $env, $header_len) = self.parse-http-request($buf);
 
         # TODO: secure File::Temp
-        my $tmpfile = $*TMPDIR.child("p6-httpd" ~ nonce());
-        LEAVE { unlink $tmpfile }
-        my $input = open("$tmpfile", :rw);
+        my $tmpfile;
+        LEAVE { unlink $tmpfile if $tmpfile.defined }
 
-        my $read = ($env<CONTENT_LENGTH>||0).Int;
+        if $env<CONTENT_LENGTH>.defined {
+            $tmpfile = $*TMPDIR.child("p6-httpd" ~ nonce());
+            my $input = open("$tmpfile", :rw);
+            my $read = $env<CONTENT_LENGTH>.Int;
 
-        if $buf.elems > $header_len {
-            my $b = $buf.subbuf($header_len);
-            $input.write($b);
-            $read -= $b.elems;
+            if $buf.elems > $header_len {
+                my $b = $buf.subbuf($header_len);
+                $input.write($b);
+                $read -= $b.elems;
+            }
+            while $read > 0 {
+                my $received = $csock.recv($tmpbuf, 1024, 0);
+                $input.write($tmpbuf.subbuf(0, $received));
+                $read -= $received;
+            }
+            $input.seek(0, 0); # rewind
+
+            $env<psgi.input> = $input;
+        } else {
+            $env<psgi.input> = IO::Scalar::Empty.new;
         }
-        while $read > 0 {
-            my $received = $csock.recv($tmpbuf, 1024, 0);
-            $input.write($tmpbuf.subbuf(0, $received));
-            $read -= $received;
-        }
-        $input.seek(0, 0); # rewind
-
-        $env<psgi.input> = $input;
 
         # TODO: support psgix.input
         if $done {
@@ -241,7 +253,7 @@ method parse-http-request(Blob $resp) {
         if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)$/ {
             $env<REQUEST_METHOD> = $/[0].Str;
             my $path_query = $/[1];
-            if $path_query ~~ m/^ (.*?) [ \? (.*) ] $/ {
+            if $path_query ~~ m/^ (.*?) [ \? (.*) ]? $/ {
                 $env<PATH_INFO> = $/[0].Str;
                 if $/[1].defined {
                     $env<QUERY_STRING> = $/[1].Str;
