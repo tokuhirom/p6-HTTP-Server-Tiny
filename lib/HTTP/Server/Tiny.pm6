@@ -154,6 +154,7 @@ method handler($csock, Sub $app) {
     loop {
         my $received = $csock.recv($tmpbuf, 1024, 0);
         say "received: $received";
+        last unless $received;
         $buf ~= $tmpbuf.subbuf(0, $received);
         my ($done, $env, $header_len) = self.parse-http-request($buf);
 
