@@ -5,7 +5,10 @@ use HTTP::Server::Tiny;
 
 sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$shotgun=False, Int :$workers=1) {
     my $httpd = HTTP::Server::Tiny.new($host, $port);
-    if $shotgun {
+    if $*DISTRO.is-win {
+        say "shotgun doesn't work on windows even if you specify." if $shotgun;
+        $httpd.run(EVALFILE($appfile));
+    } elsif $shotgun {
         $httpd.run-shotgun($appfile);
     } else {
         $httpd.run-prefork($workers, EVALFILE($appfile));
