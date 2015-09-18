@@ -184,7 +184,6 @@ method handler($csock, Sub $app) {
             $env<psgi.input> = IO::Scalar::Empty.new;
         }
 
-        # TODO: support psgix.input
         if $done {
             say 'got http header';
             # TODO: chunked support
