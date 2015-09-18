@@ -4,13 +4,6 @@ unit module Test::Utils;
 
 use NativeCall;
 
-constant SIGTERM is export = 15;
-
-sub kill(int $pid, int $sig)
-    returns Int
-    is native
-    is export
-    { ... }
 
 sub fork()
     returns Int
@@ -21,6 +14,11 @@ sub fork()
 module private {
     our sub waitpid(Int $pid, CArray[int] $status, Int $options)
             returns Int is native { ... }
+    our sub kill(int $pid, int $sig)
+        returns Int
+        is native
+        is export
+        { ... }
 }
 
 sub waitpid(Int $pid, Int $options) is export {
@@ -30,3 +28,6 @@ sub waitpid(Int $pid, Int $options) is export {
     return ($ret_pid, $status[0]);
 }
 
+sub kill(int $pid, Signal $sig) {
+    return private::kill($pid, $sig.Int);
+}

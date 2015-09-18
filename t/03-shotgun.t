@@ -19,7 +19,10 @@ if $pid == 0 { # child
 } elsif $pid > 0 { # parent
     sleep 0.1;
     my $content = LWP::Simple.get("http://127.0.0.1:$port/");
-    say ($content eqv "hello\n" ?? "ok" !! "not ok") ~ " - content";
+    say ($content eqv "hello!!!\n" ?? "ok" !! "not ok") ~ " - content";
+    unless $content eqv "hello!!!\n" {
+        say "got '$content'";
+    }
     kill($pid, SIGTERM);
     waitpid($pid, 0);
 } else {
