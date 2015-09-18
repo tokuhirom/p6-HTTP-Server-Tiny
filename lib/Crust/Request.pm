@@ -2,6 +2,9 @@ use v6;
 
 unit class Crust::Request;
 
+use URI::Escape;
+use Hash::MultiValue;
+
 has $.env;
 
 method new(Hash $env) {
@@ -30,6 +33,23 @@ method content-type()     { $.env<CONTENT_TYPE> }
 method session()         { $.env<psgix.session> }
 method session-options() { $.env<psgix.session.options> }
 method logger()          { $.env<psgix.logger> }
+
+method query_paramerters() {
+    my @pairs;
+    my Str $query_string = $.env<QUERY_STRING>;
+    if $query_string.defined {
+        $query_string = $query_string.subst(/^<[&;]>+/, '');
+        $query_string.split(/<[&;]>+/).map({
+            if $_ ~~ /\=/ {
+                my ($k, $v) = @($_.split(/\=/, 2));
+                uri_unescape($k) => uri_unescape($v);
+            } else {
+                $_ => ''
+            }
+        }).map({@pairs.push($_)});
+    }
+    return Hash::MultiValue.from-pairs(|@pairs);
+}
 
 # TODO: sub cookies {
 # TODO: sub query_parameters {
