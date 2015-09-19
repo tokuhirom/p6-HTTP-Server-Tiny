@@ -3,11 +3,14 @@ use v6;
 
 use HTTP::Server::Tiny;
 
-sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$shotgun=False, Int :$workers=1) {
+sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$threads=False, Bool :$shotgun=False, Int :$workers=1) {
     my $httpd = HTTP::Server::Tiny.new($host, $port);
     if $*DISTRO.is-win || %*ENV<SINGLE_PROCESS> {
         say "shotgun doesn't work on windows even if you specify." if $shotgun;
         $httpd.run(EVALFILE($appfile));
+    } elsif $threads {
+        say "shotgun doesn't work on threds even if you specify." if $shotgun;
+        $httpd.run-threads($workers, EVALFILE($appfile));
     } elsif $shotgun {
         $httpd.run-shotgun($appfile);
     } else {

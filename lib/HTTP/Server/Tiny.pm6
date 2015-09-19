@@ -98,6 +98,24 @@ method run-prefork(Int $workers, Sub $app) {
     }
 }
 
+method run-threads(Int $workers, Sub $app) {
+    self!show-banner;
+
+    my @threads;
+
+    for 1..$workers.Int {
+        @threads.push(Thread.start({ self.run($app) }));
+    }
+
+    loop {
+        # silly.
+        for @threads -> $thread {
+            $thread.join;
+            @threads.push: Thread.start({self.run($app)});
+        }
+    }
+}
+
 method !spawn-worker(Sub $app) {
     my $pid = fork();
     if $pid == 0 {
