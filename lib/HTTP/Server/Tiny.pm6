@@ -82,6 +82,11 @@ method !show-banner() {
 }
 
 method run-prefork(Int $workers, Sub $app) {
+    if $*DISTRO.name eq 'macosx' {
+        # kqueue is not fork safe. and macosx doesn't support rfork(2).
+        die "prefork is not supported on osx";
+    }
+
     self!show-banner;
 
     for 1..$workers.Int {
