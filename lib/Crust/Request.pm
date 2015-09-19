@@ -66,6 +66,14 @@ method headers() {
     return $!headers;
 }
 
+method content() {
+    # TODO: we should support buffering in Crust layer
+    my $input = $!env<psgi.input>;
+    $input.seek(0,0); # rewind
+    my $content = $input.slurp-rest();
+    return $content;
+}
+
 # TODO: sub cookies {
 # TODO: sub query_parameters {
 # TODO: sub content {
