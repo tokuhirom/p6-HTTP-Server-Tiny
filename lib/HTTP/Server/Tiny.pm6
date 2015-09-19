@@ -89,8 +89,23 @@ method run-prefork(Int $workers, Sub $app) {
 
     self!show-banner;
 
+    my sub spawn-worker(Sub $code) {
+        my $pid = fork();
+        if $pid == 0 {
+            $code();
+            exit;
+        } elsif $pid > 0 {
+            %pids{$pid} = True;
+            return;
+        } else {
+            die "fork failed";
+        }
+    }
+
+    my $code = sub { self.run($app) };
+
     for 1..$workers.Int {
-        self!spawn-worker($app);
+        spawn-worker($code);
     }
 
     loop {
@@ -98,7 +113,7 @@ method run-prefork(Int $workers, Sub $app) {
         if %pids{$pid}:exists {
             say "exited $pid: $status";
             %pids{$pid}:delete;
-            self!spawn-worker($app);
+            spawn-worker($code);
         }
     }
 }
@@ -106,32 +121,23 @@ method run-prefork(Int $workers, Sub $app) {
 method run-threads(Int $workers, Sub $app) {
     self!show-banner;
 
+    my $code = sub { self.run($app) };
+
     my @threads;
 
     for 1..$workers.Int {
-        @threads.push(Thread.start({ self.run($app) }));
+        @threads.push(Thread.start($code));
     }
 
     loop {
         # silly.
         for @threads -> $thread {
             $thread.join;
-            @threads.push: Thread.start({self.run($app)});
+            @threads.push: Thread.start($code);
         }
     }
 }
 
-method !spawn-worker(Sub $app) {
-    my $pid = fork();
-    if $pid == 0 {
-        self.run($app);
-    } elsif $pid > 0 {
-        %pids{$pid} = True;
-        return;
-    } else {
-        die "fork failed";
-    }
-}
 
 method run-shotgun(Str $filename) {
     self!show-banner;
