@@ -91,7 +91,8 @@ method run-prefork(Int $workers, Sub $app) {
     loop {
         my ($pid, $status) = waitpid(-1, 0);
         if %pids{$pid}:exists {
-            %pids.delete($pid);
+            say "exited $pid: $status";
+            %pids{$pid}:delete;
             self!spawn-worker($app);
         }
     }
