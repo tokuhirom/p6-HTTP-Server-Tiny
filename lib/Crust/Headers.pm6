@@ -37,6 +37,10 @@ method content-length() {
     self.header('content-length');
 }
 
+method user-agent() {
+    self.header('user-agent');
+}
+
 method Str() {
     $!env.all-kv.map(-> $k, $v { "$k: $v" }).join("\n");
 }

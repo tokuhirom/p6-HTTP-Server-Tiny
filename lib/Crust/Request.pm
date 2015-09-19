@@ -74,6 +74,8 @@ method content() {
     return $content;
 }
 
+method user-agent() { self.headers.user-agent }
+
 # TODO: sub cookies {
 # TODO: sub query_parameters {
 # TODO: sub content {
