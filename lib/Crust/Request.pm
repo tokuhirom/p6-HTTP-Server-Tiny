@@ -37,20 +37,24 @@ method session-options() { $.env<psgix.session.options> }
 method logger()          { $.env<psgix.logger> }
 
 method query_paramerters() {
-    my @pairs;
     my Str $query_string = $.env<QUERY_STRING>;
-    if $query_string.defined {
-        $query_string = $query_string.subst(/^<[&;]>+/, '');
-        $query_string.split(/<[&;]>+/).map({
-            if $_ ~~ /\=/ {
-                my ($k, $v) = @($_.split(/\=/, 2));
-                uri_unescape($k) => uri_unescape($v);
-            } else {
-                $_ => ''
-            }
-        }).map({@pairs.push($_)});
-    }
+    my @pairs = $query_string.defined
+        ?? parse-uri-query($query_string)
+        !! ();
     return Hash::MultiValue.from-pairs(|@pairs);
+}
+
+my sub parse-uri-query(Str $query_string is copy) {
+    $query_string = $query_string.subst(/^<[&;]>+/, '');
+    $query_string.split(/<[&;]>+/).map({
+        if $_ ~~ /\=/ {
+            my ($k, $v) = @($_.split(/\=/, 2));
+            uri_unescape($k) => uri_unescape($v);
+        } else {
+            $_ => ''
+        }
+    }) ==> my @pairs;
+    return @pairs;
 }
 
 method headers() {
@@ -75,6 +79,18 @@ method content() {
 }
 
 method user-agent() { self.headers.user-agent }
+
+method body-parameters() {
+    given (self.content-type) {
+        when m:i/^'application/x-www-form-urlencoded' ($|\;)/ {
+            my @q = parse-uri-query(self.content);
+            Hash::MultiValue.from-pairs(@q);
+        }
+        default {
+            Hash::MultiValue.new
+        }
+    }
+}
 
 # TODO: sub cookies {
 # TODO: sub query_parameters {
