@@ -9,6 +9,7 @@
         "LWP::Simple",
         "Hash::MultiValue",
         "URI::Escape",
+        "Raw::Socket::INET",
         "JSON::Tiny"
   ],
   "description": "",
