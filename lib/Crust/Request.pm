@@ -4,8 +4,10 @@ unit class Crust::Request;
 
 use URI::Escape;
 use Hash::MultiValue;
+use Crust::Headers;
 
-has $.env;
+has Hash $.env;
+has Crust::Headers $headers;
 
 method new(Hash $env) {
     self.bless(env => $env);
@@ -51,11 +53,23 @@ method query_paramerters() {
     return Hash::MultiValue.from-pairs(|@pairs);
 }
 
+method headers() {
+    unless $!headers.defined {
+        $!env.keys ==> grep {
+            m:i/^(HTTP|CONTENT)/
+        } ==> map {
+            my $field = $_.subst(/^HTTPS?_/, '').subst(/_/, '-', :g);
+            $field => $!env{$_}
+        } ==> my %src;
+        $!headers = Crust::Headers.new(%src);
+    }
+    return $!headers;
+}
+
 # TODO: sub cookies {
 # TODO: sub query_parameters {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
-# TODO: sub headers {
 # TODO: sub content_encoding { shift->headers->content_encoding(@_) }
 # TODO: sub header           { shift->headers->header(@_) }
 # TODO: sub referer          { shift->headers->referer(@_) }
