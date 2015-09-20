@@ -1,6 +1,7 @@
 use v6;
 
 use Template::Mojo;
+use Crust::Request;
 
 my $tmpl = Template::Mojo.new(q:heredoc/END/);
 % my ($name) = @_;
@@ -8,7 +9,8 @@ Hello, <%= $name %>
 END
 
 sub app($env) {
-    my $content = $tmpl.render($env<QUERY_STRING> // 'unknown').encode('utf-8');
+    my $req = Crust::Request.new($env);
+    my $content = $tmpl.render($req.query_paramerters<name> // 'unknown').encode('utf-8');
     return [200,
         [
                 'Content-Type' => 'text/plain'
