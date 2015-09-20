@@ -23,6 +23,10 @@ has Bool $shown-banner;
 
 my Buf $http_header_end_marker = Buf.new(13, 10, 13, 10);
 
+sub info($message) {
+    say "[INFO] [{$*THREAD.id}] $message";
+}
+
 module private {
     our sub waitpid(Int $pid, CArray[int] $status, Int $options)
             returns Int is native { ... }
