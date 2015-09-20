@@ -84,16 +84,33 @@ method content() {
 
 method user-agent() { self.headers.user-agent }
 
+# TODO: multipart/form-data
 method body-parameters() {
-    given (self.content-type) {
-        when m:i/^'application/x-www-form-urlencoded' ($|\;)/ {
-            my @q = parse-uri-query(self.content);
-            Hash::MultiValue.from-pairs(@q);
-        }
-        default {
-            Hash::MultiValue.new
+    $!env<crust.request.body> //= do {
+        given (self.content-type) {
+            when m:i/^'application/x-www-form-urlencoded' ($|\;)/ {
+                my @q = parse-uri-query(self.content);
+                Hash::MultiValue.from-pairs(@q);
+            }
+            when m:i/^'multipart/form-data' ($|\;)/ {
+                die "NIY"
+            }
+            default {
+                Hash::MultiValue.new
+            }
         }
     }
+}
+
+method parameters() {
+    $!env<crust.request.merged> //= do {
+        my Hash::MultiValue $q = self.query-paramerters();
+        my Hash::MultiValue $b = self.body-parameters();
+
+        my @pairs = |$q.all-pairs;
+        @pairs.push(|$b.all-pairs);
+        Hash::MultiValue.from-pairs(|@pairs);
+    };
 }
 
 # TODO: sub cookies {

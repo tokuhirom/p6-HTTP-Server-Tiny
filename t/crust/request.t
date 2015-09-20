@@ -4,7 +4,7 @@ use Test;
 use Crust::Request;
 use Hash::MultiValue;
 
-{
+subtest {
     my $req = Crust::Request.new({
         :REMOTE_ADDR<127.0.0.1>,
         :QUERY_STRING<foo=bar&foo=baz>,
@@ -19,10 +19,11 @@ use Hash::MultiValue;
     is $req.header('content-type'), 'text/html';
     is $req.user-agent, 'hoge';
     ok $req.content ~~ /"psgi.input"/; # XXX better method?
-}
+    is $req.parameters<foo>, 'baz';
+}, 'query params and basic things';
 
 # body-parameters: x-www-form-urlencoded
-{
+subtest {
     my $req = Crust::Request.new({
         :REMOTE_ADDR<127.0.0.1>,
         :QUERY_STRING<foo=bar&foo=baz>,
@@ -31,6 +32,8 @@ use Hash::MultiValue;
         :CONTENT_TYPE<application/x-www-form-urlencoded>
     });
     is $req.body-parameters<iyan>, 'bakan';
-}
+    is $req.parameters<foo>, 'baz';
+    is $req.parameters<iyan>, 'bakan';
+}, 'body-params';
 
 done-testing;
