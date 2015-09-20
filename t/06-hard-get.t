@@ -32,7 +32,7 @@ for 1..$n {
     loop {
         my $got = $sock.recv(1024);
         last if $got.chars == 0;
-        say "reading next: { $got.elems }";
+        say "reading next: { $got.chars }";
         $resp ~= $got;
     }
     ok $resp ~~ /hello/;
