@@ -13,7 +13,7 @@ use Hash::MultiValue;
         :CONTENT_TYPE<text/html>
     });
     is $req.address, '127.0.0.1';
-    my $p = $req.query_paramerters;
+    my $p = $req.query-paramerters;
     ok [$p.all-pairs] eqv [:foo<bar>, :foo<baz>];
     is $req.headers.content-type, 'text/html';
     is $req.user-agent, 'hoge';

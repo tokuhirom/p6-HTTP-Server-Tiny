@@ -36,7 +36,7 @@ method session()         { $.env<psgix.session> }
 method session-options() { $.env<psgix.session.options> }
 method logger()          { $.env<psgix.logger> }
 
-method query_paramerters() {
+method query-paramerters() {
     my Str $query_string = $.env<QUERY_STRING>;
     my @pairs = $query_string.defined
         ?? parse-uri-query($query_string)
