@@ -3,8 +3,10 @@ use v6;
 
 use HTTP::Server::Tiny;
 
-sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$prefork=False, Bool :$shotgun=False, Int :$workers=1) {
+sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$shotgun=False, Int :$workers=1) {
     my $httpd = HTTP::Server::Tiny.new($host, $port);
+
+    die "shotgun is notavailable now" if $shotgun;
 
     if $*DISTRO.is-win || %*ENV<SINGLE_PROCESS> {
         # single thread mode
@@ -12,9 +14,8 @@ sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Bool :$prefork=Fa
         $httpd.run(EVALFILE($appfile));
     } else {
         say "shotgun doesn't work on threds even if you specify." if $shotgun;
-        my Sub $app  = $shotgun ?? sub { $httpd.run-shotgun($appfile) } !! EVALFILE($appfile);
-        my Str $meth = $prefork ?? "run-prefork" !! "run-threads";
-        $httpd."$meth"($workers, EVALFILE($appfile));
+        my $app = EVALFILE($appfile);
+        $httpd.run-threads($workers, $app);
     }
 }
 
