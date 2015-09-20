@@ -327,7 +327,7 @@ method parse-http-request(Blob $resp) {
                 if $/[1].defined {
                     $env<QUERY_STRING> = $/[1].Str;
                 } else {
-                    $env<QUERY_STRING> = Mu;
+                    $env<QUERY_STRING> = '';
                 }
             }
         } else {
