@@ -249,8 +249,8 @@ method handler($csock, Sub $app) {
             # TODO: HTTP/1.1 support
             my $res = do {
                 CATCH { default {
-                    say "[app error] $_";
-                    self!send-response($csock, [500, [], ['ISE']]);
+                    say "[app error] $_ {.backtrace.full}";
+                    self!send-response($csock, [500, [], ['Internal server error'.encode('utf-8')]]);
                     return;
                 } };
                 $app($env);
