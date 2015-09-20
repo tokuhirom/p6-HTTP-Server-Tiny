@@ -34,6 +34,8 @@ macro debug($message) {
         quasi {
             say "[DEBUG] [{$*THREAD.id}] " ~ {{{$message}}};
         }
+    } else {
+        quasi { }
     }
 }
 
