@@ -127,12 +127,14 @@ method run-prefork(Int $workers, Sub $app) {
 }
 
 method run-threads(Int $workers, Sub $app) {
-    self!show-banner;
-
     info("run-threads: workers:$workers");
 
-    await do for 1..$workers.Int {
-        Thread.start(sub {
+    self!show-banner;
+
+    my @threads;
+
+    for 1..$workers.Int {
+        @threads.push: Thread.start(sub {
             loop {
                 my $csock = $!sock.accept;
                 LEAVE {
@@ -151,6 +153,8 @@ method run-threads(Int $workers, Sub $app) {
             info("should not reach here");
         });
     }
+
+    .join for @threads;
 }
 
 method run-shotgun(Str $filename) {
