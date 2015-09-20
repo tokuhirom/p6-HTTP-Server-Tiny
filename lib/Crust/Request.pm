@@ -70,6 +70,10 @@ method headers() {
     return $!headers;
 }
 
+method header(Str $name) {
+    $!headers.header($name);
+}
+
 method content() {
     # TODO: we should support buffering in Crust layer
     my $input = $!env<psgi.input>;
@@ -97,7 +101,6 @@ method body-parameters() {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
 # TODO: sub content_encoding { shift->headers->content_encoding(@_) }
-# TODO: sub header           { shift->headers->header(@_) }
 # TODO: sub referer          { shift->headers->referer(@_) }
 # TODO: sub user_agent       { shift->headers->user_agent(@_) }
 # TODO: sub body_parameters {

@@ -16,6 +16,7 @@ use Hash::MultiValue;
     my $p = $req.query-paramerters;
     ok [$p.all-pairs] eqv [:foo<bar>, :foo<baz>];
     is $req.headers.content-type, 'text/html';
+    is $req.header('content-type'), 'text/html';
     is $req.user-agent, 'hoge';
     ok $req.content ~~ /"psgi.input"/; # XXX better method?
 }
