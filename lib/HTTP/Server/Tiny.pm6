@@ -27,8 +27,14 @@ sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
 }
 
-sub debug($message) {
-    say "[DEBUG] [{$*THREAD.id}] $message";
+constant DEBUGGING = %*ENV<DEBUGGING>.Bool;
+
+macro debug($message) {
+    if DEBUGGING {
+        quasi {
+            say "[DEBUG] [{$*THREAD.id}] " ~ {{{$message}}};
+        }
+    }
 }
 
 module private {
