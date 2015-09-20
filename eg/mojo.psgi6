@@ -8,7 +8,7 @@ Hello, <%= $name %>
 END
 
 sub app($env) {
-    my $content = $tmpl.render($env<QUERY_STRING>).encode('utf-8');
+    my $content = $tmpl.render($env<QUERY_STRING> // 'unknown').encode('utf-8');
     return [200,
         [
                 'Content-Type' => 'text/plain'

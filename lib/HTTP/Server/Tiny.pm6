@@ -27,6 +27,16 @@ sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
 }
 
+constant DEBUGGING = %*ENV<DEBUGGING>.Bool;
+
+macro debug($message) {
+    if DEBUGGING {
+        quasi {
+            say "[DEBUG] [{$*THREAD.id}] " ~ {{{$message}}};
+        }
+    }
+}
+
 module private {
     our sub waitpid(Int $pid, CArray[int] $status, Int $options)
             returns Int is native { ... }
@@ -123,25 +133,35 @@ method run-prefork(Int $workers, Sub $app) {
 }
 
 method run-threads(Int $workers, Sub $app) {
-    self!show-banner;
+    info("run-threads: workers:$workers");
 
-    my $code = sub { self.run($app) };
+    self!show-banner;
 
     my @threads;
 
     for 1..$workers.Int {
-        @threads.push(Thread.start($code));
+        @threads.push: Thread.start(sub {
+            loop {
+                my $csock = $!sock.accept;
+                LEAVE {
+                    debug "closing socket";
+                    if $csock.defined {
+                        $csock.close;
+                    } else {
+                        debug("no socket");
+                    }
+                    CATCH { default { say "[ERROR] in closing $_ {.backtrace.full}" } }
+                }
+
+                self.handler($csock, $app);
+                CATCH { default { say "[ERROR] in handler $_{.backtrace.full}" } }
+            }
+            info("should not reach here");
+        });
     }
 
-    loop {
-        # silly.
-        for @threads -> $thread {
-            $thread.join;
-            @threads.push: Thread.start($code);
-        }
-    }
+    .join for @threads;
 }
-
 
 method run-shotgun(Str $filename) {
     self!show-banner;
@@ -180,23 +200,28 @@ my sub nonce () { return (".{$*PID}." ~ 1000.rand.Int) }
 
 method handler($csock, Sub $app) {
     CATCH { default { say "[wtf] $_: {.backtrace.full}" } }
-    say "receiving";
+    debug "receiving";
     my $buf = Buf.new;
 
     my $tmpbuf = Buf.new;
     $tmpbuf[1023] = 0; # extend buffer
     loop {
         my $received = $csock.recv($tmpbuf, 1024, 0);
-        say "received: $received";
-        last unless $received;
+        debug "received: $received";
+        unless $received {
+            debug("cannot read response. abort.");
+            return;
+        }
         $buf ~= $tmpbuf.subbuf(0, $received);
         my ($done, $env, $header_len) = self.parse-http-request($buf);
+        debug("http parsing status: $done");
 
         # TODO: secure File::Temp
         my $tmpfile;
         LEAVE { unlink $tmpfile if $tmpfile.defined }
 
         if $env<CONTENT_LENGTH>.defined {
+            debug('reading content body');
             $tmpfile = $*TMPDIR.child("p6-httpd" ~ nonce());
             my $input = open("$tmpfile", :rw);
             my $read = $env<CONTENT_LENGTH>.Int;
@@ -219,7 +244,7 @@ method handler($csock, Sub $app) {
         }
 
         if $done {
-            say 'got http header';
+            debug 'got http header';
             # TODO: chunked support
             # TODO: HTTP/1.1 support
             my $res = do {
@@ -240,7 +265,7 @@ method handler($csock, Sub $app) {
 }
 
 method !send-response($csock, Array $res) {
-    say "sending response";
+    debug "sending response";
     my $resp_string = "HTTP/1.0 $res[0] perl6\r\n";
     for @($res[1]) {
         if .key ~~ /<[\r\n]>/ {
@@ -269,14 +294,24 @@ method !send-response($csock, Array $res) {
 
 # TODO: This code is just a shit. I should replace this by kazuho san's.
 method parse-http-request(Blob $resp) {
+    debug 'parsing http header';
+
+    CATCH { default { say $_ } }
 
     my Int $header_end_pos = 0;
-    while ( $header_end_pos < $resp.bytes &&
-            $http_header_end_marker ne $resp.subbuf($header_end_pos, 4)  ) {
+    while ( $header_end_pos < $resp.bytes ) {
+        debug("subbuf");
+        if ($http_header_end_marker eq $resp.subbuf($header_end_pos, 4)) {
+            debug("found!");
+            last;
+        }
+        debug("header_end_pos: $header_end_pos bytes:{$resp.bytes}");
         $header_end_pos++;
     }
+    debug("finished header position searching");
 
     if ($header_end_pos < $resp.bytes) {
+        debug("header received");
         my @header_lines = $resp.subbuf(
             0, $header_end_pos
         ).decode('ascii').split(/\r\n/);
@@ -314,6 +349,8 @@ method parse-http-request(Blob $resp) {
         }
 
         return (True, $env, $header_end_pos+4);
+    } else {
+        debug("no header ending");
     }
 
     return (False, );
