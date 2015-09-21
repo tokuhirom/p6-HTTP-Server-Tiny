@@ -36,7 +36,7 @@ method session()         { $.env<psgix.session> }
 method session-options() { $.env<psgix.session.options> }
 method logger()          { $.env<psgix.logger> }
 
-method query-paramerters() {
+method query-parameters() {
     my Str $query_string = $.env<QUERY_STRING>;
     my @pairs = $query_string.defined
         ?? parse-uri-query($query_string)
@@ -106,7 +106,7 @@ method body-parameters() {
 
 method parameters() {
     $!env<crust.request.merged> //= do {
-        my Hash::MultiValue $q = self.query-paramerters();
+        my Hash::MultiValue $q = self.query-parameters();
         my Hash::MultiValue $b = self.body-parameters();
 
         my @pairs = |$q.all-pairs;
@@ -120,7 +120,6 @@ method parameters() {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
 # TODO: sub content_encoding { shift->headers->content_encoding(@_) }
-# TODO: sub user_agent       { shift->headers->user_agent(@_) }
 # TODO: sub body_parameters {
 # TODO: sub parameters {
 # TODO: sub uploads {

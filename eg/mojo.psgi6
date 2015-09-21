@@ -10,7 +10,7 @@ END
 
 sub app($env) {
     my $req = Crust::Request.new($env);
-    my $content = $tmpl.render($req.query-paramerters<name> // 'unknown').encode('utf-8');
+    my $content = $tmpl.render($req.query-parameters<name> // 'unknown').encode('utf-8');
     return [200,
         [
                 'Content-Type' => 'text/plain'

@@ -14,7 +14,7 @@ subtest {
         :CONTENT_TYPE<text/html>
     });
     is $req.address, '127.0.0.1';
-    my $p = $req.query-paramerters;
+    my $p = $req.query-parameters;
     ok [$p.all-pairs] eqv [:foo<bar>, :foo<baz>];
     is $req.headers.content-type, 'text/html';
     is $req.header('content-type'), 'text/html';
