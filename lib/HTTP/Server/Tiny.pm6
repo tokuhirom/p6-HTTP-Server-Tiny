@@ -2,6 +2,7 @@ use v6;
 unit class HTTP::Server::Tiny;
 
 use Raw::Socket::INET;
+use HTTP::Request::Parser;
 use NativeCall;
 
 my class IO::Scalar::Empty {
@@ -20,8 +21,6 @@ has $!sock;
 has %pids;
 
 has Bool $shown-banner;
-
-my Buf $http_header_end_marker = Buf.new(13, 10, 13, 10);
 
 sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
@@ -215,7 +214,7 @@ method handler($csock, Sub $app) {
             return;
         }
         $buf ~= $tmpbuf.subbuf(0, $received);
-        my ($done, $env, $header_len) = self.parse-http-request($buf);
+        my ($done, $env, $header_len) = parse-http-request($buf);
         debug("http parsing status: $done");
 
         # TODO: secure File::Temp
@@ -292,70 +291,6 @@ method !send-response($csock, Array $res) {
     } else {
         die "3rd element of response object must be instance of Array or IO";
     }
-}
-
-# TODO: This code is just a shit. I should replace this by kazuho san's.
-method parse-http-request(Blob $resp) {
-    debug 'parsing http header';
-
-    CATCH { default { say $_ } }
-
-    my Int $header_end_pos = 0;
-    while ( $header_end_pos < $resp.bytes ) {
-        debug("subbuf");
-        if ($http_header_end_marker eq $resp.subbuf($header_end_pos, 4)) {
-            debug("found!");
-            last;
-        }
-        debug("header_end_pos: $header_end_pos bytes:{$resp.bytes}");
-        $header_end_pos++;
-    }
-    debug("finished header position searching");
-
-    if ($header_end_pos < $resp.bytes) {
-        debug("header received");
-        my @header_lines = $resp.subbuf(
-            0, $header_end_pos
-        ).decode('ascii').split(/\r\n/);
-
-        my $env = { };
-
-        my Str $status_line = @header_lines.shift;
-        if $status_line ~~ m/^(<[A..Z]>+)\s(\S+)\sHTTP\/1\.(.)$/ {
-            $env<REQUEST_METHOD> = $/[0].Str;
-            my $path_query = $/[1];
-            if $path_query ~~ m/^ (.*?) [ \? (.*) ]? $/ {
-                $env<PATH_INFO> = $/[0].Str;
-                if $/[1].defined {
-                    $env<QUERY_STRING> = $/[1].Str;
-                } else {
-                    $env<QUERY_STRING> = '';
-                }
-            }
-        } else {
-            die "cannot parse http request: $status_line";
-        }
-
-        for @header_lines {
-            if $_ ~~ m/ ^^ ( <[ A..Z a..z - ]>+ ) \s* \: \s* (.+) $$ / {
-                my ($k, $v) = @($/);
-                $k = $k.subst(/\-/, '_', :g);
-                $k = $k.uc;
-                if $k ne 'CONTENT_LENGTH' {
-                    $k = 'HTTP_' ~ $k;
-                }
-                $env{$k} = $v.Str;
-            } else {
-                die "invalid header: $_";
-            }
-        }
-
-        return (True, $env, $header_end_pos+4);
-    } else {
-        debug("no header ending");
-    }
-
-    return (False, );
 }
 
 =begin pod
