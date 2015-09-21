@@ -10,7 +10,8 @@ subtest {
         :QUERY_STRING<foo=bar&foo=baz>,
         'psgi.input' => open('t/crust/request.t'),
         :HTTP_USER_AGENT<hoge>,
-        :HTTP_HEADER_REFERER<http://mixi.jp>,
+        :HTTP_REFERER<http://mixi.jp>,
+        :HTTP_CONTENT_ENCODING<gzip>,
         :CONTENT_TYPE<text/html>
     });
     is $req.address, '127.0.0.1';
@@ -20,6 +21,7 @@ subtest {
     is $req.header('content-type'), 'text/html';
     is $req.user-agent, 'hoge';
     is $req.referer, 'http://mixi.jp';
+    is $req.content-encoding, 'gzip';
     ok $req.content ~~ /"psgi.input"/; # XXX better method?
     is $req.parameters<foo>, 'baz';
 }, 'query params and basic things';

@@ -84,6 +84,8 @@ method content() {
 
 method user-agent() { self.headers.user-agent }
 
+method content-encoding() { self.headers.content-encoding }
+
 method referer() { self.headers.referer }
 
 # TODO: multipart/form-data
@@ -116,10 +118,8 @@ method parameters() {
 }
 
 # TODO: sub cookies {
-# TODO: sub query_parameters {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
-# TODO: sub content_encoding { shift->headers->content_encoding(@_) }
 # TODO: sub body_parameters {
 # TODO: sub parameters {
 # TODO: sub uploads {

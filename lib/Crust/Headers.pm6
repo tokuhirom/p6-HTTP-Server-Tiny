@@ -37,6 +37,10 @@ method content-length() {
     self.header('content-length');
 }
 
+method content-encoding() {
+    self.header('content-encoding');
+}
+
 method user-agent() {
     self.header('user-agent');
 }
