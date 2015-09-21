@@ -84,6 +84,8 @@ method content() {
 
 method user-agent() { self.headers.user-agent }
 
+method referer() { self.headers.referer }
+
 # TODO: multipart/form-data
 method body-parameters() {
     $!env<crust.request.body> //= do {
@@ -118,7 +120,6 @@ method parameters() {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
 # TODO: sub content_encoding { shift->headers->content_encoding(@_) }
-# TODO: sub referer          { shift->headers->referer(@_) }
 # TODO: sub user_agent       { shift->headers->user_agent(@_) }
 # TODO: sub body_parameters {
 # TODO: sub parameters {

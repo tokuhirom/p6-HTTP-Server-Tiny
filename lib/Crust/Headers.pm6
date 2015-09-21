@@ -41,6 +41,8 @@ method user-agent() {
     self.header('user-agent');
 }
 
+method referer() { self.header('referer') }
+
 method Str() {
     $!env.all-kv.map(-> $k, $v { "$k: $v" }).join("\n");
 }
