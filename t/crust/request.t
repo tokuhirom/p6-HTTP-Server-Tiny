@@ -12,6 +12,7 @@ subtest {
         :HTTP_USER_AGENT<hoge>,
         :HTTP_REFERER<http://mixi.jp>,
         :HTTP_CONTENT_ENCODING<gzip>,
+        :HTTP_HOST<example.com>,
         :CONTENT_TYPE<text/html>
     });
     is $req.address, '127.0.0.1';
@@ -24,6 +25,7 @@ subtest {
     is $req.content-encoding, 'gzip';
     ok $req.content ~~ /"psgi.input"/; # XXX better method?
     is $req.parameters<foo>, 'baz';
+    is $req.base, 'http://example.com/';
 }, 'query params and basic things';
 
 # body-parameters: x-www-form-urlencoded

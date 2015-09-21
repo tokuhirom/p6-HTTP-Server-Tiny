@@ -117,6 +117,17 @@ method parameters() {
     };
 }
 
+method base() {
+    self!uri_base;
+}
+
+method !uri_base() {
+    return ($!env<psgi.url_scheme> || "http") ~
+        "://" ~
+        ($!env<HTTP_HOST> || (($!env<SERVER_NAME> || "") ~ ":" ~ ($!env<SERVER_PORT> || 80))) ~
+        ($!env<SCRIPT_NAME> || '/');
+}
+
 # TODO: sub cookies {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
