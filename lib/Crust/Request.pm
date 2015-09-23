@@ -96,14 +96,19 @@ method body-parameters() {
                 my @q = parse-uri-query(self.content);
                 Hash::MultiValue.from-pairs(@q);
             }
-            when m:i/^'multipart/form-data' ($|\;)/ {
-                die "NIY"
+            when m:i/^'multipart/form-data' ($|\;) .*? boundary=\"?(<[^\";]>+)\"? / {
+                my $boundary = $/[0];
+                parse-multipart-form-data($boundary, $.env<psgi.input>);
             }
             default {
                 Hash::MultiValue.new
             }
         }
     }
+}
+
+sub parse-multipart-form-data($boundary, $input) {
+    my $parser = HTTP::Body::Multipart.new();
 }
 
 method parameters() {
