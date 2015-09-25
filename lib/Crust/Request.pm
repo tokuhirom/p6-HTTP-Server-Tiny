@@ -12,7 +12,6 @@ use File::Temp; # tempfile
 
 has Hash $.env;
 has Crust::Headers $headers;
-has Hash::MultiValue $.uploads = Hash::MultiValue.new;
 
 method new(Hash $env) {
     self.bless(env => $env);
@@ -93,7 +92,6 @@ method content-encoding() { self.headers.content-encoding }
 
 method referer() { self.headers.referer }
 
-# TODO: multipart/form-data
 method body-parameters() {
     $!env<crust.request.body> //= do {
         my ($type, %opts) = parse-header-item(self.content-type);
@@ -103,7 +101,9 @@ method body-parameters() {
                 Hash::MultiValue.from-pairs(@q);
             }
             when 'multipart/form-data' {
-                self!parse-multipart-parser(%opts<boundary>.encode('ascii'));
+                my ($params, $uploads) = self!parse-multipart-parser(%opts<boundary>.encode('ascii'));
+                $!env<crust.request.upload> = $uploads;
+                $params;
             }
             default {
                 Hash::MultiValue.new
@@ -112,11 +112,20 @@ method body-parameters() {
     }
 }
 
+method uploads() {
+    unless $!env<crust.request.upload>:exists {
+        self.body-parameters();
+        $!env<crust.request.upload> //= Hash::MultiValue.new;
+    }
+    return $!env<crust.request.upload>;
+}
+
 method !parse-multipart-parser(Blob $boundary) {
     my $headers;
     my Blob $content = Buf.new;
     my @parameters;
     my ($first, %opts);
+    my $uploads = Hash::MultiValue.new;
     my $parser = HTTP::MultiPartParser.new(
         boundary => $boundary,
         on_header => sub ($h) {
@@ -143,7 +152,7 @@ method !parse-multipart-parser(Blob $boundary) {
                         headers  => $headers,
                         path     => $path.IO,
                     );
-                    $.uploads.push($pair);
+                    $uploads.push($pair);
                 } else {
                     @parameters.push(%opts<name> => $content.subbuf(0));
                 }
@@ -158,7 +167,8 @@ method !parse-multipart-parser(Blob $boundary) {
     );
     $parser.parse(self.content);
     $parser.finish();
-    Hash::MultiValue.from-pairs: @parameters;
+    my $params = Hash::MultiValue.from-pairs: @parameters;
+    return $params, $uploads;
 }
 
 method parameters() {

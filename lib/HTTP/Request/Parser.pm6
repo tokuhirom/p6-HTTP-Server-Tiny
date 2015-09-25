@@ -62,7 +62,7 @@ sub parse-http-request(Blob $resp) is export {
                 my ($k, $v) = @($/);
                 $k = $k.subst(/\-/, '_', :g);
                 $k = $k.uc;
-                if $k ne 'CONTENT_LENGTH' {
+                if $k ne 'CONTENT_LENGTH' && $k ne 'CONTENT_TYPE' {
                     $k = 'HTTP_' ~ $k;
                 }
                 $env{$k} = $v.Str;
