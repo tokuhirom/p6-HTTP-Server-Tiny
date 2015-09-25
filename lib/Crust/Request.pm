@@ -202,9 +202,7 @@ method !uri_base() {
 # TODO: sub cookies {
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
-# TODO: sub uploads {
 # TODO: sub param {
-# TODO: sub upload {
 # TODO: sub uri {
 # TODO: sub new_response {
 
