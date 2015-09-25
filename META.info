@@ -10,7 +10,8 @@
         "Hash::MultiValue",
         "URI::Escape",
         "Raw::Socket::INET",
-        "JSON::Tiny"
+        "JSON::Tiny",
+        "HTTP::MultiPartParser"
   ],
   "description": "",
   "version": "*"
