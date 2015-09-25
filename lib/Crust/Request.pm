@@ -125,7 +125,8 @@ method !parse-multipart-parser(Blob $boundary) {
     my Blob $content = Buf.new;
     my @parameters;
     my ($first, %opts);
-    my $uploads = Hash::MultiValue.new;
+    my @uploads;
+    my ($tempfilepath, $tempfilefh);
     my $parser = HTTP::MultiPartParser.new(
         boundary => $boundary,
         on_header => sub ($h) {
@@ -136,23 +137,28 @@ method !parse-multipart-parser(Blob $boundary) {
             my ($cd) = $headers<content-disposition>;
             die "missing content-disposition header in multipart" unless $cd;
             ($first, %opts) = parse-header-item($cd);
+            if %opts<filename>:exists {
+                ($tempfilepath, $tempfilefh) = tempfile();
+            }
         },
         on_body => sub (Blob $chunk, Bool $final) {
-            $content ~= $chunk;
+            if %opts<filename>:exists {
+                $tempfilefh.write($chunk);
+            } else {
+                $content ~= $chunk;
+            }
 
             if $final {
                 if %opts<filename>:exists {
                     my $filename = %opts<filename>;
-                    my ($path, $fh) = tempfile();
-                    $fh.write($content);
-                    close $fh;
 
-                    my $pair = %opts<name> => Crust::Request::Upload.new(
-                        filename => $filename,
-                        headers  => $headers,
-                        path     => $path.IO,
+                    @uploads.push(
+                        %opts<name> => Crust::Request::Upload.new(
+                            filename => %opts<filename>,
+                            headers  => $headers,
+                            path     => $tempfilepath.IO,
+                        )
                     );
-                    $uploads.push($pair);
                 } else {
                     @parameters.push(%opts<name> => $content.subbuf(0));
                 }
@@ -168,7 +174,7 @@ method !parse-multipart-parser(Blob $boundary) {
     $parser.parse(self.content);
     $parser.finish();
     my $params = Hash::MultiValue.from-pairs: @parameters;
-    return $params, $uploads;
+    return $params, Hash::MultiValue.from-pairs(@uploads);
 }
 
 method parameters() {

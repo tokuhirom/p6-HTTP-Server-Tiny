@@ -18,7 +18,10 @@ subtest {
     });
     my $params = $req.body-parameters;
     is $params<text1>.decode('ascii'), 'Ratione accusamus aspernatur aliquam';
-    is $req.uploads.keys.join(','), 'upload4';
+    is $req.uploads.keys.sort.join(','), 'upload,upload1,upload2,upload3,upload4';
+    my $upload2 = $req.uploads<upload2>;
+    is $upload2.filename, 'hello.pl';
+    ok $upload2.path.slurp(:bin).decode('ascii') ~~ m:s/Hello World/;
 }, 'multipart/form-data';
 
 subtest {
