@@ -4,10 +4,15 @@ unit class Crust::Request;
 
 use URI::Escape;
 use Hash::MultiValue;
+use HTTP::MultiPartParser;
 use Crust::Headers;
+use Crust::Utils;
+use Crust::Request::Upload;
+use File::Temp; # tempfile
 
 has Hash $.env;
 has Crust::Headers $headers;
+has Hash::MultiValue $.uploads = Hash::MultiValue.new;
 
 method new(Hash $env) {
     self.bless(env => $env);
@@ -78,7 +83,7 @@ method content() {
     # TODO: we should support buffering in Crust layer
     my $input = $!env<psgi.input>;
     $input.seek(0,0); # rewind
-    my $content = $input.slurp-rest();
+    my Blob $content = $input.slurp-rest(:bin);
     return $content;
 }
 
@@ -91,19 +96,69 @@ method referer() { self.headers.referer }
 # TODO: multipart/form-data
 method body-parameters() {
     $!env<crust.request.body> //= do {
-        given (self.content-type) {
-            when m:i/^'application/x-www-form-urlencoded' ($|\;)/ {
-                my @q = parse-uri-query(self.content);
+        my ($type, %opts) = parse-header-item(self.content-type);
+        given $type {
+            when 'application/x-www-form-urlencoded' {
+                my @q = parse-uri-query(self.content.decode('ascii'));
                 Hash::MultiValue.from-pairs(@q);
             }
-            when m:i/^'multipart/form-data' ($|\;)/ {
-                die "NIY"
+            when 'multipart/form-data' {
+                self!parse-multipart-parser(%opts<boundary>.encode('ascii'));
             }
             default {
                 Hash::MultiValue.new
             }
         }
     }
+}
+
+method !parse-multipart-parser(Blob $boundary) {
+    my $headers;
+    my Blob $content = Buf.new;
+    my @parameters;
+    my ($first, %opts);
+    my $parser = HTTP::MultiPartParser.new(
+        boundary => $boundary,
+        on_header => sub ($h) {
+            @$h ==> map {
+                parse-header-line($_)
+            } ==> my @pairs;
+            $headers = Hash::MultiValue.from-pairs: |@pairs;
+            my ($cd) = $headers<content-disposition>;
+            die "missing content-disposition header in multipart" unless $cd;
+            ($first, %opts) = parse-header-item($cd);
+        },
+        on_body => sub (Blob $chunk, Bool $final) {
+            $content ~= $chunk;
+
+            if $final {
+                if %opts<filename>:exists {
+                    my $filename = %opts<filename>;
+                    my ($path, $fh) = tempfile();
+                    $fh.write($content);
+                    close $fh;
+
+                    my $pair = %opts<name> => Crust::Request::Upload.new(
+                        filename => $filename,
+                        headers  => $headers,
+                        path     => $path.IO,
+                    );
+                    $.uploads.push($pair);
+                } else {
+                    @parameters.push(%opts<name> => $content.subbuf(0));
+                }
+                $content = Buf.new;
+                undefine $headers;
+            }
+        },
+        on_error => sub (Str $err) {
+            # TODO: throw Bad Request
+            die "Error while parsing multipart(boundary:{$boundary.decode('ascii')}):$err";
+        },
+    );
+    $parser.parse(self.content);
+    $parser.finish();
+    Hash::MultiValue.from-pairs: @parameters;
 }
 
 method parameters() {

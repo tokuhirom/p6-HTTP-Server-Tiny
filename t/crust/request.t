@@ -4,6 +4,23 @@ use Test;
 use Crust::Request;
 use Hash::MultiValue;
 
+# body-parameters: multipart/form-data
+subtest {
+    my $req = Crust::Request.new({
+        :REMOTE_ADDR<127.0.0.1>,
+        :QUERY_STRING<foo=bar&foo=baz>,
+        'psgi.input' => open('t/crust/data/001-content.dat', :bin),
+        :HTTP_USER_AGENT<hoge>,
+        :HTTP_REFERER<http://mixi.jp>,
+        :HTTP_CONTENT_ENCODING<gzip>,
+        HTTP_HOST => 'example.com',
+        CONTENT_TYPE => 'multipart/form-data; boundary="----------0xKhTmLbOuNdArY"',
+    });
+    my $params = $req.body-parameters;
+    is $params<text1>.decode('ascii'), 'Ratione accusamus aspernatur aliquam';
+    is $req.uploads.keys.join(','), 'upload4';
+}, 'multipart/form-data';
+
 subtest {
     my $req = Crust::Request.new({
         :REMOTE_ADDR<127.0.0.1>,
@@ -23,7 +40,7 @@ subtest {
     is $req.user-agent, 'hoge';
     is $req.referer, 'http://mixi.jp';
     is $req.content-encoding, 'gzip';
-    ok $req.content ~~ /"psgi.input"/; # XXX better method?
+    ok $req.content.decode('ascii') ~~ /"psgi.input"/; # XXX better method?
     is $req.parameters<foo>, 'baz';
     is $req.base, 'http://example.com/';
 }, 'query params and basic things';
