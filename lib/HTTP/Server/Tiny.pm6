@@ -96,43 +96,6 @@ method !show-banner() {
     }
 }
 
-method run-prefork(Int $workers, Sub $app) {
-    if $*DISTRO.name eq 'macosx' {
-        # kqueue is not fork safe. and macosx doesn't support rfork(2).
-        die "prefork is not supported on osx";
-    }
-
-    self!show-banner;
-
-    my sub spawn-worker(Sub $code) {
-        my $pid = fork();
-        if $pid == 0 {
-            $code();
-            exit;
-        } elsif $pid > 0 {
-            %pids{$pid} = True;
-            return;
-        } else {
-            die "fork failed";
-        }
-    }
-
-    my $code = sub { self.run($app) };
-
-    for 1..$workers.Int {
-        spawn-worker($code);
-    }
-
-    loop {
-        my ($pid, $status) = waitpid(-1, 0);
-        if %pids{$pid}:exists {
-            say "exited $pid: $status";
-            %pids{$pid}:delete;
-            spawn-worker($code);
-        }
-    }
-}
-
 method run-threads(Int $workers, Sub $app) {
     info("run-threads: workers:$workers");
 
