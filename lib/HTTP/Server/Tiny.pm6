@@ -127,39 +127,6 @@ method run-threads(Int $workers, Sub $app) {
     .join for @threads;
 }
 
-method run-shotgun(Str $filename) {
-    self!show-banner;
-
-    loop {
-        my $csock = $!sock.accept();
-
-        my $pid = fork();
-        if ($pid > 0) { # parent
-            $csock.close;
-            say "waiting child process...";
-            my ($got, $status) = waitpid($pid, 0);
-            say "child process was terminated: $got, $status";
-            if ($got < 0) {
-                die "waitpid failed";
-            }
-        } elsif ($pid == 0) { # child
-            LEAVE {
-                CATCH { default { say "[ERROR] $_" } }
-                say "closing socket";
-                $csock.close
-            }
-            self.handler($csock, sub ($env) {
-                my $app = EVALFILE($filename);
-                return $app($env);
-            });
-            exit 0;
-        } else {
-            die "fork failed";
-        }
-    }
-    die "should not reach here";
-}
-
 my sub nonce () { return (".{$*PID}." ~ 1000.rand.Int) }
 
 method handler($csock, Sub $app) {
