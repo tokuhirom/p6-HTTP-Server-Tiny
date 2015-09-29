@@ -1,0 +1,113 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use utf8;
+use 5.022000;
+use autodie;
+
+no warnings 'recursion';
+
+# run server process by following command:
+#   SINGLE_PROCESS=1 perl6-m --profile-filename=aaa.json --profile -Ilib bin/crustup --port=5000 eg/hello.psgi6
+# call servers.
+#    ab -n 1000 -c 1 http://localhost:5000/exit
+# then, terminate proc.
+#    http://localhost:5000/exit
+#
+# aggregate result:
+#    perl author/moar-profiler-cli.pl < aaa.json
+
+use JSON::XS;
+use Data::Dumper;
+
+my $json = join("",<>);
+my $dat = JSON::XS->new->max_depth(1024)->decode($json);
+
+my %id_rec_depth;
+my %id_to_inclusive;
+my %id_to_entries;
+my %id_to_exclusive;
+
+my %id_to_name;
+my %id_to_file;
+my %id_to_line;
+
+my %id_to_caller;
+my %id_to_callee;
+
+my %call_inclusive;
+
+my $walk; {
+    our $CALLER_ID;
+    $walk = sub {
+        my ($node) = @_;
+        my $id = $node->{id};
+
+        if (!$id_to_name{$id}) {
+            $id_to_name{$id} = $node->{name} || '<anon>';
+            $id_to_line{$id} = $node->{line} || '<unknown>';
+            $id_to_file{$id} = $node->{file} || '<unknown>';
+        }
+
+        unless ($id_to_entries{$id}) {
+            $id_to_inclusive{$id} = 0;
+            $id_to_exclusive{$id} = 0;
+            $id_rec_depth{$id} = 0;
+        }
+
+        $id_to_entries{$id} = $node->{entries};
+        $id_to_exclusive{$id} += $node->{exclusive_time};
+
+        if ($id_rec_depth{$id} == 0) {
+            $id_to_inclusive{$id} += $node->{inclusive_time};
+            if (defined $CALLER_ID) {
+                $call_inclusive{$CALLER_ID}{$id} += $node->{inclusive_time};
+            }
+        }
+
+        if ($node->{callees}) {
+            local $CALLER_ID = $id;
+            $id_rec_depth{$id}++;
+            for (@{$node->{callees}}) {
+                push @{$id_to_caller{$_->{id}}}, $id;
+                push @{$id_to_callee{$id}}, $_->{id};
+                $walk->($_);
+            }
+            $id_rec_depth{$id}--;
+        }
+    };
+}
+
+my $root = $dat->[0]->{call_graph};
+
+$walk->($root);
+
+print "events: Ticks\n";
+
+for my $id (sort keys %id_to_entries) {
+    say "fl=" . $id_to_file{$id};
+    say "fn=" . $id_to_name{$id};
+    say $id_to_line{$id} . ' ' . $id_to_exclusive{$id};
+    say '';
+}
+
+say '';
+
+# make caller map
+for my $caller_id (sort keys %id_to_entries) {
+    for my $callee_id (@{$id_to_callee{$caller_id} // []}) {
+        # caller
+        printf "fl=%s\n", $id_to_file{$caller_id};
+        printf "fn=%s\n", $id_to_name{$caller_id};
+        # callee
+        printf "cfl=%s\n", $id_to_file{$callee_id};
+        printf "cfn=%s\n", $id_to_name{$callee_id};
+
+        # calls=(Call Count) (Destination position)
+        # (Source position) (Inclusive cost of call)
+        printf "calls=%s %s\n", $id_to_entries{$callee_id}, $id_to_line{$callee_id};
+        printf "%s %s\n", $id_to_line{$caller_id}, ($call_inclusive{$callee_id}{$caller_id} // 0);
+        printf "\n";
+    }
+}
+
