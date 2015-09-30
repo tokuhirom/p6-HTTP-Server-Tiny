@@ -11,6 +11,7 @@
         "URI::Escape",
         "Raw::Socket::INET",
         "JSON::Tiny",
+        "Cookie::Baker",
         "HTTP::MultiPartParser"
   ],
   "description": "",

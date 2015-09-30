@@ -9,6 +9,7 @@ use Crust::Headers;
 use Crust::Utils;
 use Crust::Request::Upload;
 use File::Temp; # tempfile
+use Cookie::Baker;
 
 has Hash $.env;
 has Crust::Headers $headers;
@@ -50,14 +51,15 @@ method query-parameters() {
 
 my sub parse-uri-query(Str $query_string is copy) {
     $query_string = $query_string.subst(/^<[&;]>+/, '');
-    $query_string.split(/<[&;]>+/).map({
+    my @pairs;
+    for $query_string.split(/<[&;]>+/) {
         if $_ ~~ /\=/ {
             my ($k, $v) = @($_.split(/\=/, 2));
-            uri_unescape($k) => uri_unescape($v);
+            @pairs.push(uri_unescape($k) => uri_unescape($v));
         } else {
-            $_ => ''
+            @pairs.push($_ => '');
         }
-    }) ==> my @pairs;
+    }
     return @pairs;
 }
 
@@ -94,20 +96,24 @@ method referer() { self.headers.referer }
 
 method body-parameters() {
     $!env<crust.request.body> //= do {
-        my ($type, %opts) = parse-header-item(self.content-type);
-        given $type {
-            when 'application/x-www-form-urlencoded' {
-                my @q = parse-uri-query(self.content.decode('ascii'));
-                Hash::MultiValue.from-pairs(@q);
+        if self.content-type {
+            my ($type, %opts) = parse-header-item(self.content-type);
+            given $type {
+                when 'application/x-www-form-urlencoded' {
+                    my @q = parse-uri-query(self.content.decode('ascii'));
+                    Hash::MultiValue.from-pairs(@q);
+                }
+                when 'multipart/form-data' {
+                    my ($params, $uploads) = self!parse-multipart-parser(%opts<boundary>.encode('ascii'));
+                    $!env<crust.request.upload> = $uploads;
+                    $params;
+                }
+                default {
+                    Hash::MultiValue.new
+                }
             }
-            when 'multipart/form-data' {
-                my ($params, $uploads) = self!parse-multipart-parser(%opts<boundary>.encode('ascii'));
-                $!env<crust.request.upload> = $uploads;
-                $params;
-            }
-            default {
-                Hash::MultiValue.new
-            }
+        } else {
+            Hash::MultiValue.new
         }
     }
 }
@@ -199,7 +205,18 @@ method !uri_base() {
         ($!env<SCRIPT_NAME> || '/');
 }
 
-# TODO: sub cookies {
+method cookies() {
+    return {} unless $!env<HTTP_COOKIE>;
+
+    if $!env<crust.cookie.parsed> && $!env<crust.cookie.string> eq $!env<HTTP_COOKIE> {
+        return $!env<crust.cookie.parsed>;
+    }
+
+    my $parsed = crush-cookie($!env<HTTP_COOKIE>);
+    $!env<crust.cookie.parsed> = $parsed;
+    $!env<crust.cookie.string> = $!env<HTTP_COOKIE>;
+}
+
 # TODO: sub content {
 # TODO: sub raw_body { $_[0]->content }
 # TODO: sub param {
