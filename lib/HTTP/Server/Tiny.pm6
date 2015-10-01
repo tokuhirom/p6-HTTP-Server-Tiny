@@ -83,9 +83,6 @@ sub error($err) {
 method run-async(Int $workers, Sub $app) {
     info("run async: workers:$workers");
 
-    my $req-chan = Channel.new;
-    my $resp-chan = Channel.new;
-
     my sub run-app($env) {
         CATCH {
             error($_);
