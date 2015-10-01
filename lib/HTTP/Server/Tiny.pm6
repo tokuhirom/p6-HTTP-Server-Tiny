@@ -4,12 +4,15 @@ unit class HTTP::Server::Tiny;
 use Raw::Socket::INET;
 use HTTP::Request::Parser;
 use NativeCall;
+use File::Temp;
 
 my class IO::Scalar::Empty {
     method eof() { True }
     method read(Int(Cool:D) $bytes) {
         my $buf := buf8.new;
         return $buf;
+    }
+    method close() {
     }
 }
 
@@ -38,38 +41,14 @@ macro debug($message) {
     }
 }
 
-module private {
-    our sub waitpid(Int $pid, CArray[int] $status, Int $options)
-            returns Int is native { ... }
-}
-
-my sub fork()
-    returns Int
-    is native { ... }
-
-sub waitpid(Int $pid, Int $options) {
-    my $status = CArray[int].new;
-    $status[0] = 0;
-    my $ret_pid = private::waitpid($pid, $status, $options);
-    return ($ret_pid, $status[0]);
-}
-
-
 method new($host, $port) {
     self.bless(host => $host, port => $port)!initialize;
 }
 
 method !initialize() {
-    $!sock = Raw::Socket::INET.new(
-        listen => 60,
-        localhost => $.host,
-        localport => $.port,
-        reuseaddr => True,
-    );
+    $!sock = IO::Socket::Async.listen($.host, $.port);
     self;
 }
-
-method localport() { $!sock.localport }
 
 method run(Sub $app) {
     self!show-banner;
@@ -90,110 +69,106 @@ method run(Sub $app) {
 }
 
 method !show-banner() {
+    # TODO: I want to use IO::Socket::Async#port method to use port 0.
     unless $!shown-banner {
-        say "http server is ready: http://$.host:{$!sock.localport}/";
+        say "http server is ready: http://$.host:$.port/";
         $!shown-banner = True;
     }
 }
 
-method run-threads(Int $workers, Sub $app) {
-    info("run-threads: workers:$workers");
+sub error($err) {
+    say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
+}
+
+method run-async(Int $workers, Sub $app) {
+    info("run async: workers:$workers");
+
+    my $req-chan = Channel.new;
+    my $resp-chan = Channel.new;
+
+    my sub run-app($env) {
+        CATCH {
+            error($_);
+            return [500, [], ['Internal Server Error!']];
+        };
+        return $app.($env);
+    };
 
     self!show-banner;
 
-    my @threads;
+    react {
+        whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
+            debug("new request");
+            my Buf $buf .= new;
+            my $header-parsed = False;
 
-    for 1..$workers.Int {
-        @threads.push: Thread.start(sub {
-            loop {
-                my $csock = $!sock.accept;
-                LEAVE {
-                    debug "closing socket";
-                    if $csock.defined {
-                        $csock.close;
-                    } else {
-                        debug("no socket");
+            my $tmpfname = $*TMPDIR.child("p6-httpd" ~ nonce());
+            # LEAVE { try unlink $tmpfname }
+            my $tmpfh;
+
+            my Hash $env;
+            my $got-content-len = 0;
+
+            $conn.bytes-supply.tap(sub ($got) {
+                $buf ~= $got;
+                debug("got");
+
+                unless $header-parsed {
+                    my ($done, $got-env, $header_len) = parse-http-request($buf);
+                    debug("http parsing status: $done");
+                    unless $done {
+                        return;
                     }
-                    CATCH { default { say "[ERROR] in closing $_ {.backtrace.full}" } }
+                    if $buf.elems > $header_len {
+                        $buf = $buf.subbuf($header_len);
+                    }
+                    $env = $got-env;
+                    $header-parsed = True;
                 }
 
-                self.handler($csock, $app);
-                CATCH { default { say "[ERROR] in handler $_{.backtrace.full}" } }
-            }
-            info("should not reach here");
-        });
-    }
+                if $buf.elems > 0 {
+                    $tmpfh //= open($tmpfname, :rw);
+                    $tmpfh.write($buf); # XXX blocking
+                    $buf = Buf.new;
+                }
 
-    .join for @threads;
-}
+                if $env<CONTENT_LENGTH>.defined {
+                    my $cl = $env<CONTENT_LENGTH>.Int;
+                    unless $cl == $got-content-len {
+                        return;
+                    }
+                    $tmpfh.seek(0,0); # rewind
+                    $env<psgi.input> = $tmpfh;
+                } else {
+                    # TODO: chunked request support
+                    $env<psgi.input> = IO::Scalar::Empty.new;
+                }
 
-my sub nonce () { return (".{$*PID}." ~ 1000.rand.Int) }
+                $tmpfh.close;
 
-method handler($csock, Sub $app) {
-    CATCH { default { say "[wtf] $_: {.backtrace.full}" } }
-    debug "receiving";
-    my $buf = Buf.new;
+                CATCH { default { error($_) } }
 
-    my $tmpbuf = Buf.new;
-    $tmpbuf[1023] = 0; # extend buffer
-    loop {
-        my $received = $csock.recv($tmpbuf, 1024, 0);
-        debug "received: $received";
-        unless $received {
-            debug("cannot read response. abort.");
-            return;
-        }
-        $buf ~= $tmpbuf.subbuf(0, $received);
-        my ($done, $env, $header_len) = parse-http-request($buf);
-        debug("http parsing status: $done");
+                my $resp = run-app($env);
 
-        # TODO: secure File::Temp
-        my $tmpfile;
-        LEAVE { unlink $tmpfile if $tmpfile.defined }
+                self!send-response($conn, $resp);
+                $conn.close; # TODO: keep-alive
 
-        if $env<CONTENT_LENGTH>.defined {
-            debug('reading content body');
-            $tmpfile = $*TMPDIR.child("p6-httpd" ~ nonce());
-            my $input = open("$tmpfile", :rw);
-            my $read = $env<CONTENT_LENGTH>.Int;
-
-            if $buf.elems > $header_len {
-                my $b = $buf.subbuf($header_len);
-                $input.write($b);
-                $read -= $b.elems;
-            }
-            while $read > 0 {
-                my $received = $csock.recv($tmpbuf, 1024, 0);
-                $input.write($tmpbuf.subbuf(0, $received));
-                $read -= $received;
-            }
-            $input.seek(0, 0); # rewind
-
-            $env<psgi.input> = $input;
-        } else {
-            $env<psgi.input> = IO::Scalar::Empty.new;
-        }
-
-        if $done {
-            debug 'got http header';
-            # TODO: chunked support
-            # TODO: HTTP/1.1 support
-            my $res = do {
-                CATCH { default {
-                    say "[app error] $_ {.backtrace.full}";
-                    self!send-response($csock, [500, [], ['Internal server error'.encode('utf-8')]]);
-                    return;
-                } };
-                $app($env);
-            };
-            self!send-response($csock, $res);
-            return;
-        } else {
-            $buf.say;
-            say 'not yet.';
+                try $env<psgi.input>.close;
+                try unlink $tmpfname;
+            }, done => sub {
+                debug "DONE";
+                try unlink $tmpfname;
+                try $tmpfh.close if $tmpfh;
+            }, quit => sub {
+                debug 'quit';
+            }, closing => sub {
+                debug 'closing';
+            });
         }
     }
 }
+
+my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
 
 method !send-response($csock, Array $res) {
     debug "sending response";
@@ -206,11 +181,11 @@ method !send-response($csock, Array $res) {
     }
     $resp_string ~= "\r\n";
     my $resp = $resp_string.encode('ascii');
-    $csock.send($resp, $resp.elems, 0);
+    $csock.write($resp);
     if $res[2].isa(Array) {
         for @($res[2]) -> $elem {
             if $elem.does(Blob) {
-                $csock.send($elem, $elem.elems, 0);
+                $csock.write($elem);
             } else {
                 die "response must be Array[Blob]. But {$elem.perl}";
             }

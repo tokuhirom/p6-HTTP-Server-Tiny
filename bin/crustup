@@ -11,7 +11,7 @@ sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Int :$workers=1) 
         $httpd.run(EVALFILE($appfile));
     } else {
         my $app = EVALFILE($appfile);
-        $httpd.run-threads($workers, $app);
+        $httpd.run-async($workers, $app);
     }
 }
 

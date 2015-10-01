@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/tokuhirom/p6-HTTP-Server-Tiny.svg?branch=master)](https://travis-ci.org/tokuhirom/p6-HTTP-Server-Tiny)
+
 NAME
 ====
 
