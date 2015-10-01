@@ -6,12 +6,7 @@ use HTTP::Server::Tiny;
 sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Int :$workers=1) {
     my $httpd = HTTP::Server::Tiny.new($host, $port);
 
-    if $*DISTRO.is-win || %*ENV<SINGLE_PROCESS> {
-        # single thread mode
-        $httpd.run(EVALFILE($appfile));
-    } else {
-        my $app = EVALFILE($appfile);
-        $httpd.run-async($workers, $app);
-    }
+    my $app = EVALFILE($appfile);
+    $httpd.run-async($workers, $app);
 }
 
