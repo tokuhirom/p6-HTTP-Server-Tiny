@@ -1,19 +1,28 @@
 {
-  "name": "HTTP::Server::Tiny",
-  "source-url": "",
-  "author": "Tokuhiro Matsuno",
-  "provides": {
-    "HTTP::Server::Tiny": "lib/HTTP/Server/Tiny.pm6"
+  "name" : "HTTP::Server::Tiny",
+  "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
+  "perl" : "v6",
+  "provides" : {
+    "Crust::Request::Upload" : "lib/Crust/Request/Upload.pm",
+    "Crust::Utils" : "lib/Crust/Utils.pm",
+    "HTTP::Request::Parser" : "lib/HTTP/Request/Parser.pm6",
+    "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6",
+    "Crust::Request" : "lib/Crust/Request.pm",
+    "Crust::Headers" : "lib/Crust/Headers.pm6",
+    "Crust::Response" : "lib/Crust/Response.pm6"
   },
-  "depends": [
-        "LWP::Simple",
-        "Hash::MultiValue",
-        "URI::Escape",
-        "Raw::Socket::INET",
-        "JSON::Tiny",
-        "Cookie::Baker",
-        "HTTP::MultiPartParser"
+  "depends" : [
+    "LWP::Simple",
+    "Hash::MultiValue",
+    "URI::Escape",
+    "Raw::Socket::INET",
+    "JSON::Tiny",
+    "Cookie::Baker",
+    "HTTP::MultiPartParser"
   ],
-  "description": "",
-  "version": "*"
+  "description" : "",
+  "version" : "*",
+  "authors" : [
+    "Tokuhiro Matsuno"
+  ]
 }

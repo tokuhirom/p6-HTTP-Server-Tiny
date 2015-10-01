@@ -16,6 +16,9 @@ macro debug($message) {
     }
 }
 
+# >0: header size
+# -1: failed
+# -2: request is partial
 sub parse-http-request(Blob $resp) is export {
     debug 'parsing http header';
 
@@ -54,7 +57,7 @@ sub parse-http-request(Blob $resp) is export {
                 }
             }
         } else {
-            die "cannot parse http request: $status_line";
+            return -2,Nil;
         }
 
         for @header_lines {
@@ -71,11 +74,10 @@ sub parse-http-request(Blob $resp) is export {
             }
         }
 
-        return (True, $env, $header_end_pos+4);
+        return $header_end_pos+4, $env;
     } else {
         debug("no header ending");
+        return -1,Nil;
     }
-
-    return (False, );
 }
 
