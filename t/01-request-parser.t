@@ -15,7 +15,7 @@ is $env<PATH_INFO>, "/";
     ok $ok;
     is $env<REQUEST_METHOD>, "GET";
     is $env<PATH_INFO>, "/";
-    is $env<HTTP_CONTENT_TYPE>, "text/html";
+    is $env<CONTENT_TYPE>, "text/html";
 }
 
 done-testing;
