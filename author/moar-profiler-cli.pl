@@ -109,9 +109,9 @@ my $i = 0;
 for my $id (@ids) {
     my $line = sprintf("%s(%.2f%%) %s(%.2f%%) %s %s %s\n",
         $id_to_inclusive{$id},
-        ($id_to_inclusive{$id} / $total_inclusive)*100,
+        eval { ($id_to_inclusive{$id} / $total_inclusive)*100 } // '-',
         $id_to_exclusive{$id},
-        ($id_to_exclusive{$id} / $total_exclusive)*100,
+        eval { ($id_to_exclusive{$id} / $total_exclusive)*100 } // '-',
         $node_id_to_name{$id},
         $node_id_to_file{$id},
         $node_id_to_line{$id});

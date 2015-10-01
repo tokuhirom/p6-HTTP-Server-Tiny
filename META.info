@@ -15,10 +15,12 @@
     "LWP::Simple",
     "Hash::MultiValue",
     "URI::Escape",
-    "Raw::Socket::INET",
-    "JSON::Tiny",
     "Cookie::Baker",
+    "IO::Blob",
     "HTTP::MultiPartParser"
+  ],
+  "test-depends" : [
+    "HTTP::Tinyish"
   ],
   "description" : "",
   "version" : "*",

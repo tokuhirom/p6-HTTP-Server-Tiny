@@ -19,12 +19,6 @@ my class IO::Scalar::Empty {
 has $.port = 80;
 has $.host = '127.0.0.1';
 
-has $!sock;
-
-has %pids;
-
-has Bool $shown-banner;
-
 sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
 }
@@ -42,47 +36,14 @@ macro debug($message) {
 }
 
 method new($host, $port) {
-    self.bless(host => $host, port => $port)!initialize;
+    self.bless(host => $host, port => $port);
 }
 
-method !initialize() {
-    $!sock = IO::Socket::Async.listen($.host, $.port);
-    self;
-}
-
-method run(Sub $app) {
-    self!show-banner;
-
-    loop {
-        my $csock = $!sock.accept();
-        LEAVE {
-            CATCH { default { say "[ERROR] $_" } }
-            say "closing socket";
-            $csock.close
-        }
-
-        self.handler($csock, $app);
-
-        CATCH { default { say "[ERROR] $_" } }
-    }
-    die "should not reach here";
-}
-
-method !show-banner() {
-    # TODO: I want to use IO::Socket::Async#port method to use port 0.
-    unless $!shown-banner {
-        say "http server is ready: http://$.host:$.port/";
-        $!shown-banner = True;
-    }
-}
-
-sub error($err) {
+my sub error($err) {
     say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
 }
 
-method run-async(Int $workers, Sub $app) {
-    info("run async: workers:$workers");
-
+method run(Sub $app) {
     my sub run-app($env) {
         CATCH {
             error($_);
@@ -91,7 +52,8 @@ method run-async(Int $workers, Sub $app) {
         return $app.($env);
     };
 
-    self!show-banner;
+    # TODO: I want to use IO::Socket::Async#port method to use port 0.
+    say "http server is ready: http://$.host:$.port/";
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
@@ -131,6 +93,7 @@ method run-async(Int $workers, Sub $app) {
                 if $buf.elems > 0 {
                     $tmpfh //= open($tmpfname, :rw);
                     $tmpfh.write($buf); # XXX blocking
+                    $got-content-len += $buf.bytes;
                     $buf = Buf.new;
                 }
 

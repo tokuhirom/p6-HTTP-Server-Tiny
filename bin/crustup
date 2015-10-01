@@ -3,10 +3,10 @@ use v6;
 
 use HTTP::Server::Tiny;
 
-sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000, Int :$workers=1) {
+sub MAIN(Str $appfile, Str $host='127.0.0.1', Int :$port=5000) {
     my $httpd = HTTP::Server::Tiny.new($host, $port);
 
     my $app = EVALFILE($appfile);
-    $httpd.run-async($workers, $app);
+    $httpd.run($app);
 }
 

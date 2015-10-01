@@ -1,20 +1,16 @@
 use v6;
 
-say "1..1";
-
-use lib 't/lib';
-
-use Test::Utils;
-
+use Test;
 use HTTP::Server::Tiny;
-use LWP::Simple; # bundled
-use JSON::Tiny;
+use HTTP::Tinyish;
 
-my $server = HTTP::Server::Tiny.new('127.0.0.1', 0);
-my $port = $server.localport;
+plan 1;
 
-my $pid = fork();
-if $pid == 0 { # child
+my $port = 15555;
+
+my $server = HTTP::Server::Tiny.new('127.0.0.1', $port);
+
+Thread.start({
     $server.run(sub ($env) {
         my $json = to-json({
             PATH_INFO    => $env<PATH_INFO>,
@@ -27,23 +23,13 @@ if $pid == 0 { # child
             [$json.encode('utf-8')]
         ]
     });
-    exit;
-} elsif $pid > 0 { # parent
-    sleep 0.1;
-    my $content = LWP::Simple.get("http://127.0.0.1:$port/goo?foo=bar");
-    my $dat = from-json($content);
-    my $expected = {
-        PATH_INFO    => '/goo',
-        QUERY_STRING => 'foo=bar',
-    };
-    if $dat eqv $expected {
-        say "ok - content";
-    } else {
-        say "not ok - content";
-        say "got: {$dat.perl}";
-    }
-    kill($pid, SIGTERM);
-    waitpid($pid, 0);
-} else {
-    die "fork failed";
-}
+});
+
+my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
+my $dat = from-json($resp<content>);
+my $expected = {
+    PATH_INFO    => '/goo',
+    QUERY_STRING => 'foo=bar',
+};
+is-deeply $dat, $expected;
+

@@ -1,28 +1,24 @@
 use v6;
 
-say "1..1";
-
-use lib 't/lib';
-use Test::Utils;
+use Test;
 
 use HTTP::Server::Tiny;
-use LWP::Simple; # bundled
+use HTTP::Tinyish;
 
-my $server = HTTP::Server::Tiny.new('127.0.0.1', 0);
-my $port = $server.localport;
+plan 1;
 
-my $pid = fork();
-if $pid == 0 { # child
+my $port = 15555;
+
+my $server = HTTP::Server::Tiny.new('127.0.0.1', $port);
+
+Thread.start({
     $server.run(sub ($env) {
         [200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]]
     });
-    exit;
-} elsif $pid > 0 { # parent
-    sleep 0.1;
-    my $content = LWP::Simple.get("http://127.0.0.1:$port/");
-    say ($content eqv "hello\n" ?? "ok" !! "not ok") ~ " - content";
-    kill($pid, SIGTERM);
-    waitpid($pid, 0);
-} else {
-    die "fork failed";
-}
+});
+
+my $res = HTTP::Tinyish.new.get("http://127.0.0.1:$port/");
+is $res<content>, "hello\n", "content";
+
+done-testing;
+
