@@ -34,7 +34,7 @@ constant DEBUGGING = %*ENV<DEBUGGING>.Bool;
 macro debug($message) {
     if DEBUGGING {
         quasi {
-            say "[DEBUG] [{$*THREAD.id}] " ~ {{{$message}}};
+            say "[DEBUG] [{$*PID}] [{$*THREAD.id}] " ~ {{{$message}}};
         }
     } else {
         quasi { }
@@ -106,16 +106,22 @@ method run-async(Int $workers, Sub $app) {
             my Hash $env;
             my $got-content-len = 0;
 
-            $conn.bytes-supply.tap(sub ($got) {
+            my $tap = $conn.bytes-supply.tap(sub ($got) {
                 $buf ~= $got;
                 debug("got");
 
                 unless $header-parsed {
-                    my ($done, $got-env, $header_len) = parse-http-request($buf);
-                    debug("http parsing status: $done");
-                    unless $done {
+                    my ($header_len, $got-env) = parse-http-request($buf);
+                    debug("http parsing status: $header_len");
+                    if $header_len == -1 { # incomplete header
                         return;
                     }
+                    if $header_len == -2 { # invalid request
+                        await $conn.print("400 Bad Request\r\n\r\nBad request");
+                        $conn.close;
+                        return;
+                    }
+
                     if $buf.elems > $header_len {
                         $buf = $buf.subbuf($header_len);
                     }
@@ -141,21 +147,24 @@ method run-async(Int $workers, Sub $app) {
                     $env<psgi.input> = IO::Scalar::Empty.new;
                 }
 
-                $tmpfh.close;
-
                 CATCH { default { error($_) } }
 
                 my $resp = run-app($env);
 
-                self!send-response($conn, $resp);
-                $conn.close; # TODO: keep-alive
+                try $tmpfh.close;
+                try unlink $tmpfname;
+
+                self!send-response($conn, $resp).then({
+                    debug("done");
+                    $tap.done;
+                    $conn.close; # TODO: keep-alive
+                    CATCH { default { .say }}
+                });
 
                 try $env<psgi.input>.close;
                 try unlink $tmpfname;
             }, done => sub {
                 debug "DONE";
-                try unlink $tmpfname;
-                try $tmpfh.close if $tmpfh;
             }, quit => sub {
                 debug 'quit';
             }, closing => sub {
@@ -178,11 +187,10 @@ method !send-response($csock, Array $res) {
     }
     $resp_string ~= "\r\n";
     my $resp = $resp_string.encode('ascii');
-    $csock.write($resp);
     if $res[2].isa(Array) {
         for @($res[2]) -> $elem {
             if $elem.does(Blob) {
-                $csock.write($elem);
+                return $csock.write($resp ~ $elem);
             } else {
                 die "response must be Array[Blob]. But {$elem.perl}";
             }
