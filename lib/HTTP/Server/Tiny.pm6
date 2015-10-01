@@ -122,9 +122,8 @@ method run-async(Int $workers, Sub $app) {
                         return;
                     }
 
-                    if $buf.elems > $header_len {
-                        $buf = $buf.subbuf($header_len);
-                    }
+                    $buf = $buf.subbuf($header_len);
+
                     $env = $got-env;
                     $header-parsed = True;
                 }
@@ -151,12 +150,13 @@ method run-async(Int $workers, Sub $app) {
 
                 my $resp = run-app($env);
 
-                try $tmpfh.close;
+                if $tmpfh {
+                    $tmpfh.close;
+                }
                 try unlink $tmpfname;
 
                 self!send-response($conn, $resp).then({
                     debug("done");
-                    $tap.done;
                     $conn.close; # TODO: keep-alive
                     CATCH { default { .say }}
                 });
