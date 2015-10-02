@@ -39,7 +39,7 @@ method run(Sub $app) {
     my sub run-app($env) {
         CATCH {
             error($_);
-            return [500, [], ['Internal Server Error!']];
+            return 500, [], ['Internal Server Error!'];
         };
         return $app.($env);
     };
@@ -103,14 +103,14 @@ method run(Sub $app) {
 
                 CATCH { default { error($_) } }
 
-                my $resp = run-app($env);
+                my ($status, $headers, $body) = run-app($env);
 
                 if $tmpfh {
                     $tmpfh.close;
                 }
                 try unlink $tmpfname;
 
-                self!send-response($conn, $resp).then({
+                self!send-response($conn, $status, $headers, $body).then({
                     debug("done");
                     $conn.close; # TODO: keep-alive
                     CATCH { default { .say }}
@@ -131,10 +131,11 @@ method run(Sub $app) {
 
 my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
 
-method !send-response($csock, Array $res) {
+method !send-response($csock, $status, $headers, $body) {
     debug "sending response";
-    my $resp_string = "HTTP/1.0 $res[0] perl6\r\n";
-    for @($res[1]) {
+
+    my $resp_string = "HTTP/1.0 $status perl6\r\n";
+    for @($headers) {
         if .key ~~ /<[\r\n]>/ {
             die "header split";
         }
@@ -142,17 +143,18 @@ method !send-response($csock, Array $res) {
     }
     $resp_string ~= "\r\n";
     my $resp = $resp_string.encode('ascii');
-    if $res[2].isa(Array) {
-        for @($res[2]) -> $elem {
-            if $elem.does(Blob) {
+
+    if $body ~~ Array {
+        for @($body) -> $elem {
+            if $elem ~~ Blob {
                 return $csock.write($resp ~ $elem);
             } else {
                 die "response must be Array[Blob]. But {$elem.perl}";
             }
         }
-    } elsif $res[2].isa(IO) {
+    } elsif $body ~~ IO::Handle {
         # TODO: support IO response
-        die "IO is not supported yet";
+        die "IO::Handle is not supported yet";
     } else {
         die "3rd element of response object must be instance of Array or IO";
     }
