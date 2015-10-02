@@ -62,6 +62,16 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
             my $got-content-len = 0;
 
             my $tap = $conn.bytes-supply.tap(sub ($got) {
+                CATCH {
+                    when /^"broken pipe"$/ {
+                        error("broken pipe");
+                    }
+                    default {
+                        error($_);
+                        try $conn.close;
+                    }
+                }
+
                 $buf ~= $got;
                 debug("got");
 
@@ -102,8 +112,6 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
                     # TODO: chunked request support
                     $env<psgi.input> = IO::Blob.new;
                 }
-
-                CATCH { default { error($_) } }
 
                 my ($status, $headers, $body) = run-app($env);
 
