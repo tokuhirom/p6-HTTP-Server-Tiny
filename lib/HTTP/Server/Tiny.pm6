@@ -7,6 +7,7 @@ use IO::Blob;
 
 has $.port = 80;
 has $.host = '127.0.0.1';
+has Str $.server-software = $?PACKAGE.perl;
 
 sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
@@ -128,13 +129,21 @@ method !send-response($csock, $status, $headers, $body) {
     debug "sending response";
 
     my $resp_string = "HTTP/1.0 $status perl6\r\n";
+    my %send_headers;
     for @($headers) {
         if .key ~~ /<[\r\n]>/ {
             die "header split";
         }
         $resp_string ~= "{.key}: {.value}\r\n";
+
+        my $lck = .key.lc;
+        %send_headers{$lck} = .value;
+    }
+    unless %send_headers<server> {
+        $resp_string ~= "server: $.server-software\r\n";
     }
     $resp_string ~= "\r\n";
+
     my $resp = $resp_string.encode('ascii');
     await $csock.write($resp);
 

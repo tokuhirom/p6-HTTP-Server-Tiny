@@ -5,7 +5,7 @@ use Test;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
-plan 1;
+plan 2;
 
 my $port = 15555;
 
@@ -18,6 +18,7 @@ Thread.start({
 });
 
 my $res = HTTP::Tinyish.new.get("http://127.0.0.1:$port/");
+is $res<headers><server>, 'HTTP::Server::Tiny';
 is $res<content>, "hello\n", "content";
 
 done-testing;
