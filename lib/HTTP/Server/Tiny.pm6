@@ -19,8 +19,12 @@ my sub debug($message) {
     say "[DEBUG] [{$*PID}] [{$*THREAD.id}] $message" if DEBUGGING;
 }
 
-my sub error($err) {
+my multi sub error(Exception $err) {
     say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
+}
+
+my multi sub error(Str $err) {
+    say "[{$*THREAD.id}] [ERROR] $err";
 }
 
 method new(Str $host, int $port) {
@@ -28,6 +32,11 @@ method new(Str $host, int $port) {
 }
 
 method run(HTTP::Server::Tiny:D: Sub $app) {
+    # moarvm doesn't handle SIGPIPE correctly. Without this,
+    # perl6 exit without any message.
+    # -- tokuhirom@20151003
+    signal(SIGPIPE).tap({ debug("Got SIGPIPE") });
+
     my sub run-app($env) {
         CATCH {
             error($_);
@@ -147,6 +156,8 @@ method !send-response($csock, $status, $headers, $body) {
     my $resp = $resp_string.encode('ascii');
     await $csock.write($resp);
 
+    debug "sent header";
+
     if $body ~~ Array {
         for @($body) -> $elem {
             if $elem ~~ Blob {
@@ -168,6 +179,8 @@ method !send-response($csock, $status, $headers, $body) {
     } else {
         die "3rd element of response object must be instance of Array or IO::Handle or Channel";
     }
+
+    debug "sent body" if DEBUGGING;
 }
 
 =begin pod
