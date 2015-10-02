@@ -3,16 +3,7 @@ unit class HTTP::Server::Tiny;
 
 use HTTP::Parser; # parse-http-request
 use File::Temp;
-
-my class IO::Scalar::Empty {
-    method eof() { True }
-    method read(Int(Cool:D) $bytes) {
-        my $buf := buf8.new;
-        return $buf;
-    }
-    method close() {
-    }
-}
+use IO::Blob;
 
 has $.port = 80;
 has $.host = '127.0.0.1';
@@ -98,7 +89,7 @@ method run(Sub $app) {
                     $env<psgi.input> = $tmpfh;
                 } else {
                     # TODO: chunked request support
-                    $env<psgi.input> = IO::Scalar::Empty.new;
+                    $env<psgi.input> = IO::Blob.new;
                 }
 
                 CATCH { default { error($_) } }
