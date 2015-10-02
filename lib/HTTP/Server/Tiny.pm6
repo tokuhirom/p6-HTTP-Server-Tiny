@@ -146,8 +146,10 @@ method !send-response($csock, $status, $headers, $body) {
             }
         }
     } elsif $body ~~ IO::Handle {
-        # TODO: support IO response
-        die "IO::Handle is not supported yet";
+        until $body.eof {
+            await $csock.write($body.read(1024));
+        }
+        $body.close;
     } elsif $body ~~ Channel {
         while my $got = $body.receive {
             await $csock.write($got);
