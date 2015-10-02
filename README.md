@@ -3,17 +3,41 @@
 NAME
 ====
 
-HTTP::Server::Tiny - blah blah blah
+HTTP::Server::Tiny - HTTP server for Perl6
 
 SYNOPSIS
 ========
 
     use HTTP::Server::Tiny;
 
+    my $port = 8080;
+
+    HTTP::Server::Tiny.new('127.0.0.1', $port).run(sub ($env) {
+        my $channel = Channel.new;
+        start {
+            for 1..100 {
+                $channel.send(($_ ~ "\n").Str.encode('utf-8'));
+            }
+            $channel.close;
+        };
+        return 200, ['Content-Type' => 'text/plain'], $channel
+    });
+
 DESCRIPTION
 ===========
 
-HTTP::Server::Tiny is ...
+HTTP::Server::Tiny is tiny HTTP server library for perl6.
+
+METHODS
+=======
+
+  * `HTTP::Server::Tiny.new($host, $port)`
+
+Create new instance.
+
+  * `$server.run(Sub $app)`
+
+Run http server with P6SGI app.
 
 COPYRIGHT AND LICENSE
 =====================

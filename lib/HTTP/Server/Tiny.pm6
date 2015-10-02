@@ -22,11 +22,11 @@ my sub error($err) {
     say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
 }
 
-method new($host, $port) {
+method new(Str $host, int $port) {
     self.bless(host => $host, port => $port);
 }
 
-method run(Sub $app) {
+method run(HTTP::Server::Tiny:D: Sub $app) {
     my sub run-app($env) {
         CATCH {
             error($_);
@@ -73,6 +73,7 @@ method run(Sub $app) {
                     $header-parsed = True;
                 }
 
+                # TODO: use Stream::Buffered
                 if $buf.elems > 0 {
                     $tmpfh //= open($tmpfname, :rw);
                     $tmpfh.write($buf); # XXX blocking
@@ -164,15 +165,38 @@ method !send-response($csock, $status, $headers, $body) {
 
 =head1 NAME
 
-HTTP::Server::Tiny - blah blah blah
+HTTP::Server::Tiny - HTTP server for Perl6
 
 =head1 SYNOPSIS
 
-  use HTTP::Server::Tiny;
+    use HTTP::Server::Tiny;
+
+    my $port = 8080;
+
+    HTTP::Server::Tiny.new('127.0.0.1', $port).run(sub ($env) {
+        my $channel = Channel.new;
+        start {
+            for 1..100 {
+                $channel.send(($_ ~ "\n").Str.encode('utf-8'));
+            }
+            $channel.close;
+        };
+        return 200, ['Content-Type' => 'text/plain'], $channel
+    });
 
 =head1 DESCRIPTION
 
-HTTP::Server::Tiny is ...
+HTTP::Server::Tiny is tiny HTTP server library for perl6.
+
+=head1 METHODS
+
+=item C<HTTP::Server::Tiny.new($host, $port)>
+
+Create new instance.
+
+=item C<$server.run(Sub $app)>
+
+Run http server with P6SGI app.
 
 =head1 COPYRIGHT AND LICENSE
 
