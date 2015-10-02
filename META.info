@@ -6,13 +6,8 @@
     "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6"
   },
   "depends" : [
-    "LWP::Simple",
-    "Hash::MultiValue",
-    "URI::Escape",
-    "Cookie::Baker",
     "HTTP::Parser",
-    "IO::Blob",
-    "HTTP::MultiPartParser"
+    "IO::Blob"
   ],
   "test-depends" : [
     "HTTP::Tinyish"
