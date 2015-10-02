@@ -13,7 +13,7 @@ my $server = HTTP::Server::Tiny.new('127.0.0.1', $port);
 
 Thread.start({
     $server.run(sub ($env) {
-        [200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]]
+        return 200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]
     });
 });
 

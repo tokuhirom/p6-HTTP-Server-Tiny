@@ -17,11 +17,11 @@ Thread.start({
             QUERY_STRING => $env<QUERY_STRING>,
         });
 
-        [
+        return (
             200,
             ['Content-Type' => 'application/json'],
             [$json.encode('utf-8')]
-        ]
+        );
     });
 });
 

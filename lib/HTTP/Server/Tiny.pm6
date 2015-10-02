@@ -156,7 +156,7 @@ method !send-response($csock, $status, $headers, $body) {
         # TODO: support IO response
         die "IO::Handle is not supported yet";
     } else {
-        die "3rd element of response object must be instance of Array or IO";
+        die "3rd element of response object must be instance of Array or IO::Handle or Channel";
     }
 }
 

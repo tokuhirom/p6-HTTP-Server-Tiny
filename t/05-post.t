@@ -14,7 +14,7 @@ my $server = HTTP::Server::Tiny.new('127.0.0.1', $port);
 Thread.start({
     $server.run(sub ($env) {
         my $body = $env<psgi.input>.slurp-rest;
-        [200, ['Content-Type' => 'text/plain'], [$body.encode('utf-8')]]
+        return 200, ['Content-Type' => 'text/plain'], [$body.encode('utf-8')]
     });
 });
 
