@@ -21,24 +21,18 @@ sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
 }
 
-constant DEBUGGING = %*ENV<DEBUGGING>.Bool;
+my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
 
-macro debug($message) {
-    if DEBUGGING {
-        quasi {
-            say "[DEBUG] [{$*PID}] [{$*THREAD.id}] " ~ {{{$message}}};
-        }
-    } else {
-        quasi { }
-    }
-}
-
-method new($host, $port) {
-    self.bless(host => $host, port => $port);
+my sub debug($message) {
+    say "[DEBUG] [{$*PID}] [{$*THREAD.id}] $message" if DEBUGGING;
 }
 
 my sub error($err) {
     say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
+}
+
+method new($host, $port) {
+    self.bless(host => $host, port => $port);
 }
 
 method run(Sub $app) {
