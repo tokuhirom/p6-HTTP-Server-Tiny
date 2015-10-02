@@ -61,14 +61,15 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
             my Hash $env;
             my $got-content-len = 0;
 
-            my $tap = $conn.bytes-supply.tap(sub ($got) {
+            my $byte-supply-tap = $conn.bytes-supply.tap(sub ($got) {
                 CATCH {
                     when /^"broken pipe"$/ {
                         error("broken pipe");
+                        $byte-supply-tap.close;
                     }
                     default {
                         error($_);
-                        try $conn.close;
+                        $byte-supply-tap.close;
                     }
                 }
 
@@ -83,7 +84,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
                     }
                     if $header_len == -2 { # invalid request
                         await $conn.print("400 Bad Request\r\n\r\nBad request");
-                        $conn.close;
+                        $byte-supply-tap.close;
                         return;
                     }
 
@@ -122,19 +123,22 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
 
                 self!send-response($conn, $status, $headers, $body);
                 
-                debug("done");
-                $conn.close; # TODO: keep-alive
+                $byte-supply-tap.close;
 
                 $env<psgi.input>.close;
-                if $tmpfname.IO.e {
-                    unlink $tmpfname;
-                }
             }, done => sub {
                 debug "DONE";
             }, quit => sub {
                 debug 'quit';
             }, closing => sub {
                 debug 'closing';
+                {
+                    $conn.close;
+                    CATCH { default { debug $_ } }
+                }
+                if $tmpfname.IO.e {
+                    unlink $tmpfname;
+                }
             });
         }
     }
