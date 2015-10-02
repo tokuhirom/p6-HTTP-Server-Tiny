@@ -5,8 +5,55 @@ use HTTP::Parser; # parse-http-request
 use File::Temp;
 use IO::Blob;
 
+my class TempFile {
+    has $.filename;
+    has $.fh;
+
+    method new() {
+        self.bless()!initialize
+    }
+
+    my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
+
+    method !initialize() {
+        # XXX insecure
+        loop {
+            $.filename = $*TMPDIR.child("p6-httpd" ~ nonce());
+            last unless $.filename.e;
+        }
+        $.fh = open $.filename, :rw;
+        self;
+    }
+
+    method write(Blob $b) {
+        $.fh.write: $b
+    }
+
+    method read(Int(Cool:D) $bytes) {
+        $.fh.read: $bytes
+    }
+
+    method seek(Int:D $offset, Int:D $whence) {
+        $.fh.seek: $offset, $whence
+    }
+
+    method slurp-rest(:$bin!) {
+        $.fh.slurp-rest: bin => $bin
+    }
+
+    method close() {
+        try unlink $.filename;
+        try close $.fh;
+    }
+
+    method DESTROY {
+        self.close
+    }
+}
+
 has $.port = 80;
 has $.host = '127.0.0.1';
+# XXX how do i get String replesentation of package name in right way?
 has Str $.server-software = $?PACKAGE.perl;
 
 sub info($message) {
@@ -31,6 +78,15 @@ method new(Str $host, int $port) {
     self.bless(host => $host, port => $port);
 }
 
+method !create-temp-buffer($len) {
+    if !$len.defined || $len < 64_000 {
+        IO::Blob.new
+    } else {
+        TempFile.new;
+    }
+}
+
+
 method run(HTTP::Server::Tiny:D: Sub $app) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
@@ -40,7 +96,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     my sub run-app($env) {
         CATCH {
             error($_);
-            return 500, [], ['Internal Server Error!'];
+            return 500, [], ['Internal Server Error!'.encode('utf-8')];
         };
         return $app.($env);
     };
@@ -53,10 +109,6 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
             debug("new request");
             my Buf $buf .= new;
             my $header-parsed = False;
-
-            my $tmpfname = $*TMPDIR.child("p6-httpd" ~ nonce());
-            # LEAVE { try unlink $tmpfname }
-            my $tmpfh;
 
             my Hash $env;
             my $got-content-len = 0;
@@ -94,25 +146,28 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
                     $header-parsed = True;
                 }
 
-                # TODO: use Stream::Buffered
+                my $content-length = $env<CONTENT_LENGTH>;
+                if $content-length.defined {
+                    $content-length .= Int;
+                }
+
+                $env<psgi.input> //= self!create-temp-buffer($content-length);
+
                 if $buf.elems > 0 {
-                    $tmpfh //= open($tmpfname, :rw);
-                    $tmpfh.write($buf); # XXX blocking
+                    $env<psgi.input>.write($buf); # XXX blocking
                     $got-content-len += $buf.bytes;
                     $buf = Buf.new;
                 }
 
-                if $env<CONTENT_LENGTH>.defined {
-                    my $cl = $env<CONTENT_LENGTH>.Int;
-                    unless $cl == $got-content-len {
+                if $content-length.defined {
+                    if $content-length != $got-content-len {
                         return;
                     }
-                    $tmpfh.seek(0,0); # rewind
-                    $env<psgi.input> = $tmpfh;
                 } else {
                     # TODO: chunked request support
-                    $env<psgi.input> = IO::Blob.new;
                 }
+
+                $env<psgi.input>.seek(0,0); # rewind
 
                 my ($status, $headers, $body) = run-app($env);
 
@@ -131,19 +186,13 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
                 }
                 if $env<psgi.input> {
                     $env<psgi.input>.close;
-                }
-                if $tmpfh {
-                    $tmpfh.close;
-                }
-                if $tmpfname.IO.e {
-                    unlink $tmpfname;
+                    CATCH { default { debug $_ } }
                 }
             });
         }
     }
 }
 
-my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
 
 method !send-response($csock, $status, $headers, $body) {
     debug "sending response";
