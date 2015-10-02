@@ -116,16 +116,9 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
 
                 my ($status, $headers, $body) = run-app($env);
 
-                if $tmpfh {
-                    $tmpfh.close;
-                }
-                try unlink $tmpfname;
-
                 self!send-response($conn, $status, $headers, $body);
-                
-                $byte-supply-tap.close;
 
-                $env<psgi.input>.close;
+                $byte-supply-tap.close;
             }, done => sub {
                 debug "DONE";
             }, quit => sub {
@@ -135,6 +128,12 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
                 {
                     $conn.close;
                     CATCH { default { debug $_ } }
+                }
+                if $env<psgi.input> {
+                    $env<psgi.input>.close;
+                }
+                if $tmpfh {
+                    $tmpfh.close;
                 }
                 if $tmpfname.IO.e {
                     unlink $tmpfname;
