@@ -148,6 +148,11 @@ method !send-response($csock, $status, $headers, $body) {
     } elsif $body ~~ IO::Handle {
         # TODO: support IO response
         die "IO::Handle is not supported yet";
+    } elsif $body ~~ Channel {
+        while my $got = $body.receive {
+            await $csock.write($got);
+        }
+        CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
     } else {
         die "3rd element of response object must be instance of Array or IO::Handle or Channel";
     }
