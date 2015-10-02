@@ -5,7 +5,6 @@
   "provides" : {
     "Crust::Request::Upload" : "lib/Crust/Request/Upload.pm",
     "Crust::Utils" : "lib/Crust/Utils.pm",
-    "HTTP::Request::Parser" : "lib/HTTP/Request/Parser.pm6",
     "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6",
     "Crust::Request" : "lib/Crust/Request.pm",
     "Crust::Headers" : "lib/Crust/Headers.pm6",
@@ -16,6 +15,7 @@
     "Hash::MultiValue",
     "URI::Escape",
     "Cookie::Baker",
+    "HTTP::Parser",
     "IO::Blob",
     "HTTP::MultiPartParser"
   ],

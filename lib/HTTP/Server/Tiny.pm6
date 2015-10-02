@@ -1,7 +1,7 @@
 use v6;
 unit class HTTP::Server::Tiny;
 
-use HTTP::Request::Parser;
+use HTTP::Parser; # parse-http-request
 use File::Temp;
 
 my class IO::Scalar::Empty {
