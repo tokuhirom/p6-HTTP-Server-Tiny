@@ -1,9 +1,7 @@
 use v6;
 unit class HTTP::Server::Tiny;
 
-use Raw::Socket::INET;
 use HTTP::Request::Parser;
-use NativeCall;
 use File::Temp;
 
 my class IO::Scalar::Empty {
