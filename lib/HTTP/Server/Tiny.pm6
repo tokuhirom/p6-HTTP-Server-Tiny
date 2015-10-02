@@ -101,14 +101,15 @@ method run(Sub $app) {
                 }
                 try unlink $tmpfname;
 
-                self!send-response($conn, $status, $headers, $body).then({
-                    debug("done");
-                    $conn.close; # TODO: keep-alive
-                    CATCH { default { .say }}
-                });
+                self!send-response($conn, $status, $headers, $body);
+                
+                debug("done");
+                $conn.close; # TODO: keep-alive
 
-                try $env<psgi.input>.close;
-                try unlink $tmpfname;
+                $env<psgi.input>.close;
+                if $tmpfname.IO.e {
+                    unlink $tmpfname;
+                }
             }, done => sub {
                 debug "DONE";
             }, quit => sub {
@@ -134,11 +135,12 @@ method !send-response($csock, $status, $headers, $body) {
     }
     $resp_string ~= "\r\n";
     my $resp = $resp_string.encode('ascii');
+    await $csock.write($resp);
 
     if $body ~~ Array {
         for @($body) -> $elem {
             if $elem ~~ Blob {
-                return $csock.write($resp ~ $elem);
+                await $csock.write($elem);
             } else {
                 die "response must be Array[Blob]. But {$elem.perl}";
             }
