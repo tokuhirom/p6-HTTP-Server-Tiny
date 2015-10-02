@@ -93,106 +93,102 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     # -- tokuhirom@20151003
     signal(SIGPIPE).tap({ debug("Got SIGPIPE") });
 
-    my sub run-app($env) {
-        CATCH {
-            error($_);
-            return 500, [], ['Internal Server Error!'.encode('utf-8')];
-        };
-        return $app.($env);
-    };
-
     # TODO: I want to use IO::Socket::Async#port method to use port 0.
     say "http server is ready: http://$.host:$.port/";
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
-            debug("new request");
-            my Buf $buf .= new;
-            my $header-parsed = False;
-
-            my Hash $env;
-            my $got-content-len = 0;
-
-            my $byte-supply-tap = $conn.bytes-supply.tap(sub ($got) {
-                CATCH {
-                    when /^"broken pipe"$/ {
-                        error("broken pipe");
-                        $byte-supply-tap.close;
-                    }
-                    default {
-                        error($_);
-                        $byte-supply-tap.close;
-                    }
-                }
-
-                $buf ~= $got;
-                debug("got");
-
-                unless $header-parsed {
-                    my ($header_len, $got-env) = parse-http-request($buf);
-                    debug("http parsing status: $header_len");
-                    if $header_len == -1 { # incomplete header
-                        return;
-                    }
-                    if $header_len == -2 { # invalid request
-                        await $conn.print("400 Bad Request\r\n\r\nBad request");
-                        $byte-supply-tap.close;
-                        return;
-                    }
-
-                    $buf = $buf.subbuf($header_len);
-
-                    $env = $got-env;
-                    $header-parsed = True;
-                }
-
-                my $content-length = $env<CONTENT_LENGTH>;
-                if $content-length.defined {
-                    $content-length .= Int;
-                }
-
-                $env<psgi.input> //= self!create-temp-buffer($content-length);
-
-                if $buf.elems > 0 {
-                    $env<psgi.input>.write($buf); # XXX blocking
-                    $got-content-len += $buf.bytes;
-                    $buf = Buf.new;
-                }
-
-                if $content-length.defined {
-                    if $content-length != $got-content-len {
-                        return;
-                    }
-                } else {
-                    # TODO: chunked request support
-                }
-
-                $env<psgi.input>.seek(0,0); # rewind
-
-                my ($status, $headers, $body) = run-app($env);
-
-                self!send-response($conn, $status, $headers, $body);
-
-                $byte-supply-tap.close;
-            }, done => sub {
-                debug "DONE";
-            }, quit => sub {
-                debug 'quit';
-            }, closing => sub {
-                debug 'closing';
-                {
-                    $conn.close;
-                    CATCH { default { debug $_ } }
-                }
-                if $env<psgi.input> {
-                    $env<psgi.input>.close;
-                    CATCH { default { debug $_ } }
-                }
-            });
+            LEAVE { try $conn.close }
+            self!handler($conn, $app);
         }
     }
 }
 
+method !handler(IO::Socket::Async $conn, Sub $app) {
+    debug("new request");
+    my Buf $buf .= new;
+    my $header-parsed = False;
+
+    my Hash $env;
+    LEAVE { try $env<psgi.input>.close }
+    my $got-content-len = 0;
+
+    CATCH {
+        when /^"broken pipe"$/ {
+            error("broken pipe");
+            return;
+        }
+        default {
+            error($_);
+            return;
+        }
+    }
+
+    my $read-chan = $conn.bytes-supply.Channel;
+
+    # read headers
+    loop {
+        $buf ~= $read-chan.receive;
+
+        (my $header_len, $env) = parse-http-request($buf);
+        debug("http parsing status: $header_len");
+        if $header_len > 0 {
+            $buf = $buf.subbuf($header_len);
+            last;
+        } elsif $header_len == -1 { # incomplete header
+            next;
+        } elsif $header_len == -2 { # invalid request
+            await $conn.print("400 Bad Request\r\n\r\nBad request");
+            $conn.close;
+            return;
+        } else {
+            die "should not reach here";
+        }
+    }
+
+    my $content-length = $env<CONTENT_LENGTH>;
+    if $content-length.defined {
+        $content-length .= Int;
+    }
+
+    $env<psgi.input> //= self!create-temp-buffer($content-length);
+
+    debug "content-length: $content-length";
+
+    if $content-length.defined {
+        my $cl = $content-length;
+        while $cl > 0 {
+            if $buf.elems > 0 {
+                debug "got {$buf.elems} bytes";
+                my $write-bytes = $buf.elems min $cl;
+                $env<psgi.input>.write($buf.subbuf(0, $write-bytes)); # XXX blocking
+                $cl -= $write-bytes;
+                debug "remains $cl";
+                last unless $cl > 0;
+            }
+
+            $buf ~= $read-chan.receive;
+        }
+    } else {
+        # TODO: chunked request support
+    }
+
+    $env<psgi.input>.seek(0,0); # rewind
+
+    debug 'run app';
+    my ($status, $headers, $body) = sub {
+        CATCH {
+            error($_);
+            return 500, [], ['Internal Server Error!'.encode('utf-8')];
+        };
+        return $app.($env);
+    }.();
+
+    debug 'sending response';
+    self!send-response($conn, $status, $headers, $body);
+
+    debug 'closing';
+}
 
 method !send-response($csock, $status, $headers, $body) {
     debug "sending response";
