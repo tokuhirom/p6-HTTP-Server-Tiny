@@ -148,6 +148,13 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
         }
     }
 
+    $env<SERVER_NAME> = $.host;
+    $env<SERVER_PORT> = $.port;
+    $env<SCRIPT_NAME> = '';
+
+    # TODO: REMOTE_ADDR
+    # TODO: REMOTE_PORT
+
     my $content-length = $env<CONTENT_LENGTH>;
     if $content-length.defined {
         $content-length .= Int;
