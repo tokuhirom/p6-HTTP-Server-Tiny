@@ -228,35 +228,41 @@ method !handle-connection($conn, $read-chan, Sub $app, Bool $use-keepalive is co
         }
     } elsif $chunked {
         my $wrote = 0;
+        my $chunk;
         DECHUNK: loop {
+            debug 'processing chunk';
             if $buf.elems > 0 {
+                $chunk = $buf;
+                $buf = Buf.new;
+            } else {
+                debug "read chunk data";
+                $chunk = $read-chan.receive;
+            }
+
+            PROCESS_CHUNK: loop {
                 my int $end_pos = 0;
                 my Buf $end_marker = Buf.new(13, 10);
-                while ( $end_pos < $buf.bytes ) {
-                    if ($end_marker eq $buf.subbuf($end_pos, 2)) {
-                        last;
+                while $end_pos < $chunk.bytes {
+                    if ($end_marker eq $chunk.subbuf($end_pos, 2)) {
+                        debug 'found chunk marker';
+                        my $size = $chunk.subbuf(0, $end_pos);
+                        my $chunk_len = :16($size.decode('ascii'));
+                        debug "got chunk {$end_pos+2} + $chunk_len {$chunk.elems}";
+                        if $chunk_len == 0 {
+                            debug "end chunk";
+                            last DECHUNK;
+                        }
+                        if $end_pos+2+$chunk_len <= $chunk.elems {
+                            debug 'writing temp file';
+                            $env<psgi.input>.write($chunk.subbuf($end_pos+2, $chunk_len));
+                            $wrote += $chunk_len;
+                            $chunk = $chunk.subbuf($end_pos+2 + $chunk_len);
+                            next PROCESS_CHUNK;
+                        }
                     }
                     $end_pos++;
                 }
-
-                if $end_pos < $buf.bytes {
-                    my $size = $buf.subbuf(0, $end_pos);
-                    my $chunk_len = :16($size.decode('ascii'));
-                    debug "got chunk {$end_pos+2} + $chunk_len {$buf.elems}";
-                    last DECHUNK if $chunk_len == 0;
-                    if $end_pos+2+$chunk_len <= $buf.elems {
-                        $env<psgi.input>.write($buf.subbuf($end_pos+2, $chunk_len));
-                        $wrote += $chunk_len;
-                        $buf = $buf.subbuf($end_pos+2 + $chunk_len);
-                    } else {
-                        debug "read rest chunk";
-                        $buf ~= $read-chan.receive;
-                    }
-                } else {
-                    debug 'incomplete chunk';
-                    debug "read new chunk";
-                    $buf ~= $read-chan.receive;
-                }
+                last;
             }
         }
         debug "wrote $wrote bytes by chunked";

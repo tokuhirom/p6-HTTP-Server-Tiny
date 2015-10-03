@@ -66,6 +66,7 @@ for (
     ) {
     $sock.write: .encode('utf-8')
 }
+say "# wrote requests";
 my Buf $buf .= new;
 while my $got = $sock.recv(:bin) {
     $buf ~= $got;
