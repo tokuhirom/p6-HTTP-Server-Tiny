@@ -62,9 +62,10 @@ has $.host = '127.0.0.1';
 # XXX how do i get String replesentation of package name in right way?
 has Str $.server-software = $?PACKAGE.perl;
 has $.max-keepalive-reqs = 1;
+has $.timeout is rw = 10;
 
 sub info($message) {
-    say "[INFO] [{$*THREAD.id}] $message";
+    say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
 }
 
 my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
@@ -74,11 +75,11 @@ my sub debug($message) {
 }
 
 my multi sub error(Exception $err) {
-    say "[{$*THREAD.id}] [ERROR] $err {$err.backtrace.full}";
+    say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err {$err.backtrace.full}";
 }
 
 my multi sub error(Str $err) {
-    say "[{$*THREAD.id}] [ERROR] $err";
+    say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err";
 }
 
 method new(Str $host, int $port) {
@@ -101,7 +102,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     signal(SIGPIPE).tap({ debug("Got SIGPIPE") });
 
     # TODO: I want to use IO::Socket::Async#port method to use port 0.
-    say "http server is ready: http://$.host:$.port/";
+    say "http server is ready: http://$.host:$.port/ (timeout: $.timeout, pid:$*PID)";
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
@@ -119,6 +120,10 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
             error("broken pipe");
             return;
         }
+        when X::Channel::ReceiveOnClosed {
+            error("Cannot receive a message on a closed channel");
+            return;
+        }
         default {
             error($_);
             return;
@@ -133,11 +138,21 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     loop {
         ++$req-count;
 
-        my $may-keepalive = $req-count < $.max-keepalive-reqs;
-        $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
-        (my $keepalive, $pipelined_buf) = self!handle-connection(
-                $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
-        last unless $keepalive;
+        my $req-promise = Promise.start: {
+            my $may-keepalive = $req-count < $.max-keepalive-reqs;
+            $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
+            (my $keepalive, $pipelined_buf) = self!handle-connection(
+                    $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
+            $keepalive;
+        };
+        my $timer-promise = Promise.start: {
+            debug "sleeping $.timeout";
+            sleep $.timeout;
+            debug "kill promise";
+            $read-chan.close;
+            $req-promise.break;
+        };
+        last unless $req-promise.result;
     };
 }
 
@@ -154,9 +169,11 @@ method !handle-connection($conn, $read-chan, Sub $app, Bool $use-keepalive is co
             $buf ~= $prebuf;
             $prebuf = Nil;
         } else {
+            debug 'reading header';
             $buf ~= $read-chan.receive;
         }
 
+        debug 'parsing http request';
         (my $header_len, $env) = parse-http-request($buf);
         debug("http parsing status: $header_len");
         if $header_len > 0 {
@@ -443,7 +460,7 @@ method !handle-response($csock, $protocol, $status, $headers, $body, $use-keepal
 
 =head1 NAME
 
-HTTP::Server::Tiny - HTTP server for Perl6
+HTTP::Server::Tiny - a simple HTTP server for Perl6
 
 =head1 SYNOPSIS
 
@@ -464,7 +481,7 @@ HTTP::Server::Tiny - HTTP server for Perl6
 
 =head1 DESCRIPTION
 
-HTTP::Server::Tiny is tiny HTTP server library for perl6.
+HTTP::Server::Tiny is a standalone HTTP/1.1 web server for perl6.
 
 =head1 METHODS
 
@@ -475,6 +492,10 @@ Create new instance.
 =item C<$server.run(Sub $app)>
 
 Run http server with P6SGI app.
+
+=head1 TODO
+
+=item Support timeout
 
 =head1 COPYRIGHT AND LICENSE
 

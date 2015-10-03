@@ -3,7 +3,7 @@
 NAME
 ====
 
-HTTP::Server::Tiny - HTTP server for Perl6
+HTTP::Server::Tiny - a simple HTTP server for Perl6
 
 SYNOPSIS
 ========
@@ -26,7 +26,7 @@ SYNOPSIS
 DESCRIPTION
 ===========
 
-HTTP::Server::Tiny is tiny HTTP server library for perl6.
+HTTP::Server::Tiny is a standalone HTTP/1.1 web server for perl6.
 
 METHODS
 =======
@@ -38,6 +38,11 @@ Create new instance.
   * `$server.run(Sub $app)`
 
 Run http server with P6SGI app.
+
+TODO
+====
+
+  * Support timeout
 
 COPYRIGHT AND LICENSE
 =====================
