@@ -232,6 +232,15 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     debug 'closing';
 }
 
+my @WDAY = <Sun Mon Tue Wed Thu Fri Sat Sun>;
+my @MON = <Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec>;
+my sub http-date() {
+    my $dt = DateTime.now;
+    return sprintf("%s, %02d-%s-%04d %02d:%02d:%02d GMT",
+            @WDAY[$dt.day-of-week], $dt.day-of-month, @MON[$dt.month-1], $dt.year,
+            $dt.hour, $dt.minute, $dt.second);
+}
+
 method !send-response($csock, $status, $headers, $body) {
     debug "sending response";
 
@@ -248,6 +257,9 @@ method !send-response($csock, $status, $headers, $body) {
     }
     unless %send_headers<server> {
         $resp_string ~= "server: $.server-software\r\n";
+    }
+    unless %send_headers<date> {
+        $resp_string ~= "date: {http-date}\r\n";
     }
     $resp_string ~= "\r\n";
 
