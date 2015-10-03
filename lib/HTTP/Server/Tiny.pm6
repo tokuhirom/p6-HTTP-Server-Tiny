@@ -158,7 +158,9 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
 
     debug "content-length: {$content-length.perl}";
 
-    my Bool $chunked = $env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked';
+    my Bool $chunked = $env<HTTP_TRANSFER_ENCODING>
+        ?? $env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked'
+        !! False;
 
     if $content-length.defined {
         my $cl = $content-length;
