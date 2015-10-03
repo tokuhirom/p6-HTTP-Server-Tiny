@@ -83,7 +83,6 @@ method new(Str $host, int $port) {
 }
 
 method !create-temp-buffer($len) {
-        return IO::Blob.new;
     if $len.defined && $len < 64_000 {
         IO::Blob.new
     } else {
