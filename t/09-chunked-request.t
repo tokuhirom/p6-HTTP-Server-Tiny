@@ -70,11 +70,7 @@ my Buf $buf .= new;
 while my $got = $sock.recv(:bin) {
     $buf ~= $got;
 }
-is $buf.decode('utf-8'), [
-    "HTTP/1.0 200 perl6\r\n",
-    "Content-Type: text/plain\r\n",
-    "server: HTTP::Server::Tiny\r\n",
-    "\r\n",
+ok $buf.decode('utf-8').index([
     "hogehoge1\n",
     "fugafuga1hogehoge2\n",
     "fugafuga2hogehoge3\n",
@@ -86,5 +82,5 @@ is $buf.decode('utf-8'), [
     "fugafuga8hogehoge9\n",
     "fugafuga9hogehoge10\n",
     "fugafuga10"
-].join("");
+].join("")) > 0;
 
