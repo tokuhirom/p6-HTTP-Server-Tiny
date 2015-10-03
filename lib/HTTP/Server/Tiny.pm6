@@ -216,10 +216,6 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
         # null io
     }
 
-    $env<p> = open "/tmp/x", :rw;
-    $env<p>.write("UNKO\n".encode('utf-8'));
-    $env<p>.seek(0,0);
-
     $env<psgi.input>.seek(0,0); # rewind
 
     debug 'run app';
