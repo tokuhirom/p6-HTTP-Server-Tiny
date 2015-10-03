@@ -10,23 +10,22 @@ my class TempFile {
     has $.fh;
 
     method new() {
-        self.bless()!initialize
+        # XXX insecure
+        my $filename;
+        loop {
+            $filename = $*TMPDIR.child("p6-httpd" ~ nonce());
+            last unless $filename.e;
+        }
+        my $fh = open $filename, :rw;
+        debug "filename: $filename: {$fh.opened}";
+        self.bless(filename => $filename, fh => $fh);
     }
 
     my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
 
-    method !initialize() {
-        # XXX insecure
-        loop {
-            $.filename = $*TMPDIR.child("p6-httpd" ~ nonce());
-            last unless $.filename.e;
-        }
-        $.fh = open $.filename, :rw;
-        self;
-    }
-
     method write(Blob $b) {
-        $.fh.write: $b
+        debug "write to $.filename";
+        $.fh.write($b)
     }
 
     method read(Int(Cool:D) $bytes) {
@@ -34,7 +33,11 @@ my class TempFile {
     }
 
     method seek(Int:D $offset, Int:D $whence) {
-        $.fh.seek: $offset, $whence
+        $.fh.seek($offset, $whence);
+    }
+
+    method tell() {
+        $.fh.tell();
     }
 
     method slurp-rest(:$bin!) {
@@ -42,6 +45,7 @@ my class TempFile {
     }
 
     method close() {
+        debug 'close';
         try unlink $.filename;
         try close $.fh;
     }
@@ -79,7 +83,8 @@ method new(Str $host, int $port) {
 }
 
 method !create-temp-buffer($len) {
-    if !$len.defined || $len < 64_000 {
+        return IO::Blob.new;
+    if $len.defined && $len < 64_000 {
         IO::Blob.new
     } else {
         TempFile.new;
@@ -107,11 +112,9 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
 method !handler(IO::Socket::Async $conn, Sub $app) {
     debug("new request");
     my Buf $buf .= new;
-    my $header-parsed = False;
 
     my Hash $env;
     LEAVE { try $env<psgi.input>.close }
-    my $got-content-len = 0;
 
     CATCH {
         when /^"broken pipe"$/ {
@@ -151,9 +154,11 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
         $content-length .= Int;
     }
 
-    $env<psgi.input> //= self!create-temp-buffer($content-length);
+    $env<psgi.input> = self!create-temp-buffer($content-length);
 
-    debug "content-length: $content-length";
+    debug "content-length: {$content-length.perl}";
+
+    my Bool $chunked = $env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked';
 
     if $content-length.defined {
         my $cl = $content-length;
@@ -169,9 +174,49 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
 
             $buf ~= $read-chan.receive;
         }
+    } elsif $chunked {
+        my $wrote = 0;
+        DECHUNK: loop {
+            if $buf.elems > 0 {
+                my int $end_pos = 0;
+                my Buf $end_marker = Buf.new(13, 10);
+                while ( $end_pos < $buf.bytes ) {
+                    if ($end_marker eq $buf.subbuf($end_pos, 2)) {
+                        last;
+                    }
+                    $end_pos++;
+                }
+
+                if $end_pos < $buf.bytes {
+                    my $size = $buf.subbuf(0, $end_pos);
+                    my $chunk_len = :16($size.decode('ascii'));
+                    debug "got chunk {$end_pos+2} + $chunk_len {$buf.elems}";
+                    last DECHUNK if $chunk_len == 0;
+                    if $end_pos+2+$chunk_len <= $buf.elems {
+                        $env<psgi.input>.write($buf.subbuf($end_pos+2, $chunk_len));
+                        $wrote += $chunk_len;
+                        $buf = $buf.subbuf($end_pos+2 + $chunk_len);
+                    } else {
+                        debug "read rest chunk";
+                        $buf ~= $read-chan.receive;
+                    }
+                } else {
+                    debug 'incomplete chunk';
+                    debug "read new chunk";
+                    $buf ~= $read-chan.receive;
+                }
+            }
+        }
+        debug "wrote $wrote bytes by chunked";
+        $env<CONTENT_LENGTH> = $wrote.Str;
     } else {
         # TODO: chunked request support
+        # null io
     }
+
+    $env<p> = open "/tmp/x", :rw;
+    $env<p>.write("UNKO\n".encode('utf-8'));
+    $env<p>.seek(0,0);
 
     $env<psgi.input>.seek(0,0); # rewind
 
