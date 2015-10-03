@@ -26,7 +26,10 @@ Thread.start({
 });
 
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
-my $dat = from-json($resp<content>);
+my $dat = do {
+    CATCH { default { say "ERROR: $_"; $resp.perl.say; fail; } }
+    from-json($resp<content>);
+};
 my $expected = {
     PATH_INFO    => '/goo',
     QUERY_STRING => 'foo=bar',

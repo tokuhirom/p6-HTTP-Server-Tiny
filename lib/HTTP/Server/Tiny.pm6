@@ -5,6 +5,8 @@ use HTTP::Parser; # parse-http-request
 use File::Temp;
 use IO::Blob;
 
+my Buf $CRLF = Buf.new(0x0d, 0x0a);
+
 my class TempFile {
     has $.filename;
     has $.fh;
@@ -59,6 +61,7 @@ has $.port = 80;
 has $.host = '127.0.0.1';
 # XXX how do i get String replesentation of package name in right way?
 has Str $.server-software = $?PACKAGE.perl;
+has $.max-keepalive-reqs = 1;
 
 sub info($message) {
     say "[INFO] [{$*THREAD.id}] $message";
@@ -110,10 +113,6 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
 
 method !handler(IO::Socket::Async $conn, Sub $app) {
     debug("new request");
-    my Buf $buf .= new;
-
-    my Hash $env;
-    LEAVE { try $env<psgi.input>.close }
 
     CATCH {
         when /^"broken pipe"$/ {
@@ -128,9 +127,35 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
 
     my $read-chan = $conn.bytes-supply.Channel;
 
+    my $req-count = 0;
+
+    my $pipelined_buf;
+    loop {
+        ++$req-count;
+
+        my $may-keepalive = $req-count < $.max-keepalive-reqs;
+        $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
+        (my $keepalive, $pipelined_buf) = self!handle-connection(
+                $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
+        last unless $keepalive;
+    };
+}
+
+method !handle-connection($conn, $read-chan, Sub $app, Bool $use-keepalive is copy, Bool $is-keepalive,
+        $prebuf is copy) {
+    my $pipelined_buf;
+    my Buf $buf .= new;
+    my Hash $env;
+    LEAVE { try $env<psgi.input>.close }
+
     # read headers
     loop {
-        $buf ~= $read-chan.receive;
+        if $prebuf {
+            $buf ~= $prebuf;
+            $prebuf = Nil;
+        } else {
+            $buf ~= $read-chan.receive;
+        }
 
         (my $header_len, $env) = parse-http-request($buf);
         debug("http parsing status: $header_len");
@@ -158,6 +183,25 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     my $content-length = $env<CONTENT_LENGTH>;
     if $content-length.defined {
         $content-length .= Int;
+    }
+
+    my $protocol = $env<SERVER_PROTOCOL>;
+    if $use-keepalive {
+        if $protocol eq 'HTTP/1.1' {
+            if my $c = $env<HTTP_CONNECTION> {
+                if $c ~~ m:i/^\s*close\s*/ {
+                    $use-keepalive = False;
+                }
+            }
+        } else {
+            if my $c = $env<HTTP_CONNECTION> {
+                unless $c ~~ m:i/^\s*keep\-alive\s*/ {
+                    $use-keepalive = False;
+                }
+            } else {
+                $use-keepalive = False;
+            }
+        }
     }
 
     $env<psgi.input> = self!create-temp-buffer($content-length);
@@ -219,13 +263,29 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
         $env<CONTENT_LENGTH> = $wrote.Str;
     } else {
         # TODO: chunked request support
-        # null io
+        if $buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
+            $pipelined_buf = $buf;
+            $use-keepalive = True; # force keep-alive
+        }
+    }
+
+    my @res;
+
+    if $env<HTTP_EXPECT> {
+        if $env<HTTP_EXPECT> eq '100-continue' {
+            await $conn.write("HTTP/1.1 100 Continue\r\n\r\n".encode('ascii'));
+        } else {
+            @res = 417,[ 'Content-Type' => 'text/plain', 'Connection' => 'close' ], [ 'Expectation Failed'.encode('utf-8') ] 
+        }
     }
 
     $env<psgi.input>.seek(0,0); # rewind
 
     debug 'run app';
     my ($status, $headers, $body) = sub {
+        if @res {
+            return @res;
+        }
         CATCH {
             error($_);
             return 500, [], ['Internal Server Error!'.encode('utf-8')];
@@ -234,9 +294,9 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     }.();
 
     debug 'sending response';
-    self!send-response($conn, $status, $headers, $body);
+    $use-keepalive = self!handle-response($conn, $protocol, $status, $headers, $body, $use-keepalive);
 
-    debug 'closing';
+    return $use-keepalive, $pipelined_buf;
 }
 
 my @WDAY = <Sun Mon Tue Wed Thu Fri Sat Sun>;
@@ -248,18 +308,25 @@ my sub http-date() {
             $dt.hour, $dt.minute, $dt.second);
 }
 
-method !send-response($csock, $status, $headers, $body) {
+method !handle-response($csock, $protocol, $status, $headers, $body, $use-keepalive is copy) {
     debug "sending response";
 
-    my $resp_string = "HTTP/1.0 $status perl6\r\n";
+    my $resp_string = "$protocol $status perl6\r\n";
     my %send_headers;
     for @($headers) {
         if .key ~~ /<[\r\n]>/ {
             die "header split";
         }
-        $resp_string ~= "{.key}: {.value}\r\n";
 
         my $lck = .key.lc;
+        if ($lck eq 'connection') {
+            if $use-keepalive && .value.lc ne 'keep-alive' {
+                $use-keepalive = False;
+            }
+        } else {
+            $resp_string ~= "{.key}: {.value}\r\n";
+        }
+
         %send_headers{$lck} = .value;
     }
     unless %send_headers<server> {
@@ -268,36 +335,102 @@ method !send-response($csock, $status, $headers, $body) {
     unless %send_headers<date> {
         $resp_string ~= "date: {http-date}\r\n";
     }
+
+    my sub status-with-no-entity-body(int $status) {
+        return $status < 200 || $status == 204 || $status == 304;
+    }
+
+    # try to set content-length when keepalive can be used, or disable it
+    my $use-chunked = False;
+    if $protocol eq 'HTTP/1.0' {
+        if $use-keepalive {
+            # Plack::Util::content_length
+            my sub content-length($body) {
+                return Nil unless defined $body;
+                if $body ~~ Array {
+                    my $cl = 0;
+                    for @($body) {
+                        $cl += .bytes;
+                    }
+                    return $cl;
+                } elsif $body ~~ IO::Handle {
+                    return $body.s;
+                }
+            }
+
+            if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
+                # ok
+            } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
+                $resp_string ~= "content-length: $cl\015\012";
+            } else {
+                $use-keepalive = False;
+            }
+
+            $resp_string ~= "Connection: keep-alive\x0d\x0a" if $use-keepalive;
+            $resp_string ~= "Connection: close\x0d\x0a" unless $use-keepalive; # fmm
+        }
+    } elsif ( $protocol eq 'HTTP/1.1' ) {
+        if %send_headers<content-length>.defined || %send_headers<transfer-encoding>.defined {
+            # ok
+        } elsif !status-with-no-entity-body($status) {
+            $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
+            $use-chunked = True;
+        }
+        $resp_string ~= "Connection: close\x0d\x0a" unless $use-keepalive; # fmm
+    }
     $resp_string ~= "\r\n";
+    
+    # TODO combine response header and small request body
 
     my $resp = $resp_string.encode('ascii');
     await $csock.write($resp);
 
     debug "sent header";
 
-    if $body ~~ Array {
-        for @($body) -> $elem {
-            if $elem ~~ Blob {
-                await $csock.write($elem);
+    my sub scan-psgi-body($body) {
+        gather {
+            if $body ~~ Array {
+                for @($body) -> $elem {
+                    if $elem ~~ Blob {
+                        take $elem;
+                    } else {
+                        die "response must be Array[Blob]. But {$elem.perl}";
+                    }
+                }
+            } elsif $body ~~ IO::Handle {
+                until $body.eof {
+                    take $body.read(1024);
+                }
+                $body.close;
+            } elsif $body ~~ Channel {
+                while my $got = $body.receive {
+                    take $got;
+                }
+                CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
             } else {
-                die "response must be Array[Blob]. But {$elem.perl}";
+                die "3rd element of response object must be instance of Array or IO::Handle or Channel";
             }
         }
-    } elsif $body ~~ IO::Handle {
-        until $body.eof {
-            await $csock.write($body.read(1024));
-        }
-        $body.close;
-    } elsif $body ~~ Channel {
-        while my $got = $body.receive {
+    }
+
+    for scan-psgi-body($body) -> Blob $got {
+        next if $got.bytes == 0;
+
+        if $use-chunked {
+            my $buf = sprintf("%X", $got.bytes).encode('ascii') ~ $CRLF ~ $got ~ $CRLF;
+            await $csock.write($buf);
+        } else {
             await $csock.write($got);
         }
-        CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
-    } else {
-        die "3rd element of response object must be instance of Array or IO::Handle or Channel";
+    }
+    if $use-chunked {
+        debug "send end mark";
+        await $csock.write("0".encode('ascii') ~ $CRLF ~ $CRLF);
     }
 
     debug "sent body" if DEBUGGING;
+
+    return $use-keepalive;
 }
 
 =begin pod
