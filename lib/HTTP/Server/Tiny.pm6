@@ -62,7 +62,6 @@ has $.host = '127.0.0.1';
 # XXX how do i get String replesentation of package name in right way?
 has Str $.server-software = $?PACKAGE.perl;
 has $.max-keepalive-reqs = 1;
-has $.timeout is rw = 10;
 
 sub info($message) {
     say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
@@ -102,7 +101,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     signal(SIGPIPE).tap({ debug("Got SIGPIPE") }) unless $*DISTRO.is-win;
 
     # TODO: I want to use IO::Socket::Async#port method to use port 0.
-    say "http server is ready: http://$.host:$.port/ (timeout: $.timeout, pid:$*PID)";
+    say "http server is ready: http://$.host:$.port/ (pid:$*PID)";
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
@@ -138,21 +137,11 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     loop {
         ++$req-count;
 
-        my $req-promise = Promise.start: {
-            my $may-keepalive = $req-count < $.max-keepalive-reqs;
-            $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
-            (my $keepalive, $pipelined_buf) = self!handle-connection(
-                    $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
-            $keepalive;
-        };
-        my $timer-promise = Promise.start: {
-            debug "sleeping $.timeout";
-            sleep $.timeout;
-            debug "kill promise";
-            $read-chan.close;
-            $req-promise.break;
-        };
-        last unless $req-promise.result;
+        my $may-keepalive = $req-count < $.max-keepalive-reqs;
+        $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
+        (my $keepalive, $pipelined_buf) = self!handle-connection(
+                $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
+        last unless $keepalive;
     };
 }
 

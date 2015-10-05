@@ -2,6 +2,7 @@
   "name" : "HTTP::Server::Tiny",
   "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
   "perl" : "v6",
+  "build-depends" : [ ],
   "provides" : {
     "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6"
   },
@@ -9,10 +10,10 @@
     "HTTP::Parser",
     "IO::Blob"
   ],
+  "description" : "",
   "test-depends" : [
     "HTTP::Tinyish"
   ],
-  "description" : "",
   "version" : "*",
   "authors" : [
     "Tokuhiro Matsuno"
