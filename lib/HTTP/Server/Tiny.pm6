@@ -99,7 +99,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
     # -- tokuhirom@20151003
-    signal(SIGPIPE).tap({ debug("Got SIGPIPE") });
+    signal(SIGPIPE).tap({ debug("Got SIGPIPE") }) unless $*DISTRO.is-win;
 
     # TODO: I want to use IO::Socket::Async#port method to use port 0.
     say "http server is ready: http://$.host:$.port/ (timeout: $.timeout, pid:$*PID)";
