@@ -18,10 +18,10 @@ Thread.start({
     });
 });
 
-my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
+my %resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
    headers => { 
         'content-type' => 'application/x-www-form-urlencoded'
     },
     content => "hello\n" x 1000);
-is($resp<content>.chars, 6000);
+is(%resp<content>.chars, 6000);
 
