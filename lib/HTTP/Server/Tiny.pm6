@@ -150,7 +150,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
     my $pipelined_buf;
     my Buf $buf .= new;
     my Hash $env;
-    LEAVE { try $env<psgi.input>.close }
+    LEAVE { try $env<p6sgi.input>.close }
 
     # read headers
     loop {
@@ -211,7 +211,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         }
     }
 
-    $env<psgi.input> = self!create-temp-buffer($content-length);
+    $env<p6sgi.input> = self!create-temp-buffer($content-length);
 
     debug "content-length: {$content-length.perl}";
 
@@ -225,7 +225,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
             if $buf.elems > 0 {
                 debug "got {$buf.elems} bytes";
                 my $write-bytes = $buf.elems min $cl;
-                $env<psgi.input>.write($buf.subbuf(0, $write-bytes)); # XXX blocking
+                $env<p6sgi.input>.write($buf.subbuf(0, $write-bytes)); # XXX blocking
                 $cl -= $write-bytes;
                 debug "remains $cl";
                 last unless $cl > 0;
@@ -261,7 +261,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
                         }
                         if $end_pos+2+$chunk_len <= $chunk.elems {
                             debug 'writing temp file';
-                            $env<psgi.input>.write($chunk.subbuf($end_pos+2, $chunk_len));
+                            $env<p6sgi.input>.write($chunk.subbuf($end_pos+2, $chunk_len));
                             $wrote += $chunk_len;
                             $chunk = $chunk.subbuf($end_pos+2 + $chunk_len);
                             next PROCESS_CHUNK;
@@ -292,7 +292,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         }
     }
 
-    $env<psgi.input>.seek(0,0); # rewind
+    $env<p6sgi.input>.seek(0,0); # rewind
 
     debug 'run app';
     my ($status, $headers, $body) = sub {
