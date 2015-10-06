@@ -35,7 +35,7 @@ METHODS
 
 Create new instance.
 
-  * `$server.run(Sub $app)`
+  * `$server.run(Callable $app)`
 
 Run http server with P6SGI app.
 

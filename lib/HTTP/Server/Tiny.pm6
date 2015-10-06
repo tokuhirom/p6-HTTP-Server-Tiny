@@ -94,7 +94,7 @@ method !create-temp-buffer($len) {
 }
 
 
-method run(HTTP::Server::Tiny:D: Sub $app) {
+method run(HTTP::Server::Tiny:D: Callable $app) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
     # -- tokuhirom@20151003
@@ -111,7 +111,7 @@ method run(HTTP::Server::Tiny:D: Sub $app) {
     }
 }
 
-method !handler(IO::Socket::Async $conn, Sub $app) {
+method !handler(IO::Socket::Async $conn, Callable $app) {
     debug("new request");
 
     CATCH {
@@ -145,7 +145,7 @@ method !handler(IO::Socket::Async $conn, Sub $app) {
     };
 }
 
-method !handle-connection($conn, $read-chan, Sub $app, Bool $use-keepalive is copy, Bool $is-keepalive,
+method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive is copy, Bool $is-keepalive,
         $prebuf is copy) {
     my $pipelined_buf;
     my Buf $buf .= new;
@@ -479,7 +479,7 @@ HTTP::Server::Tiny is a standalone HTTP/1.1 web server for perl6.
 
 Create new instance.
 
-=item C<$server.run(Sub $app)>
+=item C<$server.run(Callable $app)>
 
 Run http server with P6SGI app.
 
