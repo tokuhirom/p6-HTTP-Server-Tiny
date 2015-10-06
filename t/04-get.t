@@ -1,6 +1,8 @@
 use v6;
 
 use Test;
+use lib 't/lib';
+use Test::TCP;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
@@ -25,6 +27,7 @@ Thread.start({
     });
 });
 
+wait_port($port);
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
 my $dat = do {
     CATCH { default { say "ERROR: $_"; $resp.perl.say; fail; } }

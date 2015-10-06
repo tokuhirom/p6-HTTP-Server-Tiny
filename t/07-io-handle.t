@@ -2,6 +2,8 @@ use v6;
 # HELLO
 
 use Test;
+use lib 't/lib';
+use Test::TCP;
 
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
@@ -19,6 +21,7 @@ Thread.start({
     });
 });
 
+wait_port($port);
 my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
    headers => { 
         'content-type' => 'application/x-www-form-urlencoded'

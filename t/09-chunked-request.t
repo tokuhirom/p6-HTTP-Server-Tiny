@@ -1,6 +1,8 @@
 use v6;
 
 use Test;
+use lib 't/lib';
+use Test::TCP;
 
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
@@ -18,7 +20,7 @@ Thread.start({
     });
 });
 
-sleep 0.5;
+wait_port($port);
 my $sock = IO::Socket::INET.new(
     host => '127.0.0.1',
     port => $port,
