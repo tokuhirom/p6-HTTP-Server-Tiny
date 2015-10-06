@@ -4,7 +4,7 @@ use HTTP::Server::Tiny;
 
 my $port = 15555;
 
-HTTP::Server::Tiny.new('127.0.0.1', $port).run(sub ($env) {
+HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port).run(sub ($env) {
     my $channel = Channel.new;
     start {
         for 1..100 {

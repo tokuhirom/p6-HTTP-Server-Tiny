@@ -9,7 +9,7 @@ plan 1;
 
 my $port = 15555;
 
-my $server = HTTP::Server::Tiny.new('127.0.0.1', $port);
+my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 Thread.start({
     $server.run(sub ($env) {
