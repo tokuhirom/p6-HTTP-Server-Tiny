@@ -404,6 +404,8 @@ method !handle-response($csock, $protocol, $status, $headers, $body, $use-keepal
                 for @($body) -> $elem {
                     if $elem ~~ Blob {
                         take $elem;
+                    } elsif $elem ~~ Str {
+                        take $elem.encode;
                     } else {
                         die "response must be Array[Blob]. But {$elem.perl}";
                     }
