@@ -296,8 +296,10 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
             return @res;
         }
         CATCH {
-            error($_);
-            return 500, [], ['Internal Server Error!'.encode('utf-8')];
+            default {
+                error($_);
+                return 500, [], ['Internal Server Error!'.encode('utf-8')];
+            }
         };
         return $app.($env);
     }.();
