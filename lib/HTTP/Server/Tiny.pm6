@@ -156,6 +156,12 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         } else {
             debug 'reading header';
             $buf ~= $read-chan.receive;
+            CATCH {
+                when X::Channel::ReceiveOnClosed {
+                    debug("Connection closed by peer");
+                    return;
+                }
+            }
         }
 
         debug 'parsing http request';
