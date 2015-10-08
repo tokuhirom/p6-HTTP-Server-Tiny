@@ -184,7 +184,7 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
     $env<SERVER_NAME> = $.host;
     $env<SERVER_PORT> = $.port;
     $env<SCRIPT_NAME> = '';
-    $env<psgi.error>  = $*ERR;
+    $env<p6sgi.error>  = $*ERR;
 
     # TODO: REMOTE_ADDR
     # TODO: REMOTE_PORT
