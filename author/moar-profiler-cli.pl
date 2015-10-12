@@ -33,7 +33,7 @@ GetOptions(
 our $CALLEE_DUMP_LEVEL = 0;
 
 my $json = join("",<>);
-my $dat = decode_json($json);
+my $dat = JSON::XS->new->max_depth(1024)->decode($json);
 
 my %id_rec_depth;
 my %id_to_inclusive;
