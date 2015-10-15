@@ -7,6 +7,8 @@ use IO::Blob;
 
 my Buf $CRLF = Buf.new(0x0d, 0x0a);
 
+my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
+
 my class TempFile {
     has $.filename;
     has $.fh;
@@ -47,13 +49,348 @@ my class TempFile {
     }
 
     method close() {
-        debug 'close';
+        debug 'closing temp file';
         try unlink $.filename;
         try close $.fh;
     }
 
     method DESTROY {
         self.close
+    }
+}
+
+my class HTTP::Server::Tiny::Handler {
+    has $.use-keepalive is required;
+    has $.host is required;
+    has $.port is required;
+    has buf8 $.buf .= new;
+    has Bool $!header-parsed = False;
+    has %!env;
+    has $!chunked;
+    has $!content-length;
+    has $.conn is required;
+    has $!wrote-body-size = 0;
+    has $.sent-response = False;
+    has Callable $.app is required;
+    has Str $!protocol;
+    has Str $.server-software is required;
+    has int $.request-count = 1;
+    has int $.max-keepalive-reqs is required;
+
+    method handle($got) {
+        $!buf ~= $got;
+
+        unless $!header-parsed {
+            self!parse-header();
+        }
+        self!parse-body();
+    }
+
+    method next-request() {
+        self.close();
+
+        my $use-keepalive = $.request-count < $.max-keepalive-reqs
+            && $!buf.defined && $!buf.elems > 0;
+        HTTP::Server::Tiny::Handler.new(
+            use-keepalive      => $!max-keepalive-reqs < $!request-count,
+            request-count      => $!request-count+1,
+            max-keepalive-reqs => $!max-keepalive-reqs,
+            server-software    => $!server-software,
+            app                => $!app,
+            conn               => $!conn,
+            buf                => $!buf,
+            host               => $!host,
+            port               => $!port,
+        );
+    }
+
+    method !parse-header() {
+        debug 'parsing http request';
+        my ($header_len, $env) = parse-http-request($!buf);
+        %!env = %$env;
+        debug("http parsing status: $header_len");
+        if $header_len > 0 {
+            $!buf = $!buf.subbuf($header_len);
+            %!env<SERVER_NAME> = $.host;
+            %!env<SERVER_PORT> = $.port;
+            %!env<SCRIPT_NAME> = '';
+            %!env<p6sgi.error>  = $*ERR;
+
+            # TODO: REMOTE_ADDR
+            # TODO: REMOTE_PORT
+
+            my $content-length = %!env<CONTENT_LENGTH>;
+            if $content-length.defined {
+                $!content-length = $content-length.Int;
+            }
+
+            $!protocol = %!env<SERVER_PROTOCOL>;
+            if $.use-keepalive {
+                if $!protocol eq 'HTTP/1.1' {
+                    if my $c = %!env<HTTP_CONNECTION> {
+                        if $c ~~ m:i/^\s*close\s*/ {
+                            $.use-keepalive = False;
+                        }
+                    }
+                } else {
+                    if my $c = %!env<HTTP_CONNECTION> {
+                        unless $c ~~ m:i/^\s*keep\-alive\s*/ {
+                            $.use-keepalive = False;
+                        }
+                    } else {
+                        $.use-keepalive = False;
+                    }
+                }
+            }
+
+            debug "content-length: {$!content-length.perl}";
+
+            $!chunked = %!env<HTTP_TRANSFER_ENCODING>
+                ?? %!env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked'
+                !! False;
+        } elsif $header_len == -1 { # incomplete header
+            debug 'incomplete header' unless DEBUGGING;
+        } elsif $header_len == -2 { # invalid request
+            self!send-response(400, [], ['Bad request']);
+        } else {
+            die "should not reach here";
+        }
+    }
+
+    method !parse-body() {
+        if $!content-length.defined {
+            %!env<p6sgi.input> //= self!create-temp-buffer($!content-length);
+
+            debug "got {$!buf.elems} bytes";
+            my $write-bytes = $!buf.elems min $!content-length;
+            if $write-bytes {
+                %!env<p6sgi.input>.write($!buf.subbuf(0, $write-bytes)); # XXX blocking
+                $!wrote-body-size += $write-bytes;
+                $!buf = $!buf.subbuf($write-bytes);
+                debug "remains { $!content-length - $!wrote-body-size }";
+            }
+
+            if $!wrote-body-size == $!content-length {
+                debug "got all content body";
+                return self!run-app();
+            }
+        } elsif $!chunked {
+            %!env<p6sgi.input> //= self!create-temp-buffer(Nil);
+
+            my $wrote = 0;
+            PROCESS_CHUNK: loop {
+                for 0..^$!buf.bytes-1 -> $end_pos {
+                    if $!buf[$end_pos]==0x0d && $!buf[$end_pos+1]==0x0a {
+                        debug 'found chunk marker';
+                        my $size = $!buf.subbuf(0, $end_pos);
+                        my $chunk_len = :16($size.decode('ascii'));
+                        debug "got chunk {$end_pos+2} + $chunk_len {$!buf.elems}";
+                        if $chunk_len == 0 {
+                            debug "end chunk";
+                            debug "wrote $wrote bytes by chunked";
+                            %!env<CONTENT_LENGTH> = $wrote.Str;
+                            return self!run-app();
+                        }
+                        if $end_pos+2+$chunk_len <= $!buf.elems {
+                            debug 'writing temp file';
+                            %!env<p6sgi.input>.write($!buf.subbuf($end_pos+2, $chunk_len));
+                            $wrote += $chunk_len;
+                            $!buf = $!buf.subbuf($end_pos+2 + $chunk_len);
+                            next PROCESS_CHUNK;
+                        }
+                    }
+                }
+                return; # partial
+            }
+        } else {
+            %!env<p6sgi.input> = IO::Blob.new;
+
+            if $!buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
+                $.use-keepalive = True; # force keep-alive
+            } else {
+                $!buf = buf8.new; # clear buffer
+            }
+            return self!run-app();
+        }
+
+        if %!env<HTTP_EXPECT> {
+            if %!env<HTTP_EXPECT> eq '100-continue' {
+                await $.conn.print("HTTP/1.1 100 Continue\r\n\r\n");
+            } else {
+                my $body = 'Expectation Failed';
+                self!send-response(
+                    417, [
+                        'Content-Type' => 'text/plain',
+                        'Connection' => 'close',
+                        'Content-length' => $body.elems],
+                    [$body]);
+                $.conn.close;
+            }
+        }
+    }
+
+    method !run-app() {
+        %!env<p6sgi.input>.seek(0,0); # rewind
+
+        my ($status, $headers, $body) = sub {
+            CATCH {
+                default {
+                    error($_);
+                    return 500, [], ['Internal Server Error!'];
+                }
+            };
+            return $!app.(%!env);
+        }();
+        debug "ran app: $status" if DEBUGGING;
+        self!send-response($status, $headers, $body);
+    }
+
+    method !send-response(int $status, $headers, $body) {
+        debug "sending response";
+
+        my $resp_string = "$!protocol $status perl6\r\n";
+        my %send_headers;
+        for @($headers) {
+            if .key ~~ /<[\r\n]>/ {
+                die "header split";
+            }
+
+            my $lck = .key.lc;
+            if ($lck eq 'connection') {
+                if $!use-keepalive && .value.lc ne 'keep-alive' {
+                    $!use-keepalive = False;
+                }
+            } else {
+                $resp_string ~= "{.key}: {.value}\r\n";
+            }
+
+            %send_headers{$lck} = .value;
+        }
+        unless %send_headers<server> {
+            $resp_string ~= "server: $.server-software\r\n";
+        }
+        unless %send_headers<date> {
+            $resp_string ~= "date: {http-date}\r\n";
+        }
+
+        my sub status-with-no-entity-body(int $status) {
+            return $status < 200 || $status == 204 || $status == 304;
+        }
+
+        # try to set content-length when keepalive can be used, or disable it
+        my $use-chunked = False;
+        if $!protocol eq 'HTTP/1.0' {
+            if $!use-keepalive {
+                # Plack::Util::content_length
+                my sub content-length($body) {
+                    return Nil unless defined $body;
+                    if $body ~~ Array {
+                        my $cl = 0;
+                        for @($body) {
+                            $cl += .bytes;
+                        }
+                        return $cl;
+                    } elsif $body ~~ IO::Handle {
+                        return $body.s;
+                    }
+                }
+
+                if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
+                    # ok
+                } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
+                    $resp_string ~= "content-length: $cl\015\012";
+                } else {
+                    $!use-keepalive = False;
+                }
+
+                $resp_string ~= "Connection: keep-alive\x0d\x0a" if $!use-keepalive;
+                $resp_string ~= "Connection: close\x0d\x0a" unless $!use-keepalive; # fmm
+            }
+        } elsif $!protocol eq 'HTTP/1.1' {
+            if %send_headers<content-length>.defined || %send_headers<transfer-encoding>.defined {
+                # ok
+            } elsif !status-with-no-entity-body($status) {
+                $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
+                $use-chunked = True;
+            }
+            $resp_string ~= "Connection: close\x0d\x0a" unless $!use-keepalive; # fmm
+        }
+        $resp_string ~= "\r\n";
+        
+        # TODO combine response header and small request body
+
+        my $resp = $resp_string.encode('ascii');
+        await $.conn.write($resp);
+
+        debug "sent header";
+
+        my sub scan-psgi-body($body) {
+            gather {
+                if $body ~~ Array {
+                    for @($body) -> $elem {
+                        if $elem ~~ Blob {
+                            take $elem;
+                        } elsif $elem ~~ Str {
+                            take $elem.encode;
+                        } else {
+                            die "response must be Array[Blob]. But {$elem.perl}";
+                        }
+                    }
+                } elsif $body ~~ IO::Handle {
+                    until $body.eof {
+                        take $body.read(1024);
+                    }
+                    $body.close;
+                } elsif $body ~~ Channel {
+                    while my $got = $body.receive {
+                        take $got;
+                    }
+                    CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
+                } else {
+                    die "3rd element of response object must be instance of Array or IO::Handle or Channel";
+                }
+            }
+        }
+
+        for scan-psgi-body($body) -> Blob $got {
+            next if $got.bytes == 0;
+
+            if $use-chunked {
+                my $buf = sprintf("%X", $got.bytes).encode('ascii') ~ $CRLF ~ $got ~ $CRLF;
+                await $.conn.write($buf);
+            } else {
+                await $.conn.write($got);
+            }
+        }
+        if $use-chunked {
+            debug "send end mark";
+            await $.conn.write("0".encode('ascii') ~ $CRLF ~ $CRLF);
+        }
+
+        debug "sent body" if DEBUGGING;
+
+        $!sent-response = True;
+    }
+
+    method !create-temp-buffer($len) {
+        if $len.defined && $len < 64_000 {
+            debug('blob') if DEBUGGING;
+            IO::Blob.new
+        } else {
+            debug('tempfile') if DEBUGGING;
+            TempFile.new;
+        }
+    }
+
+
+    # free resources.
+    method close() {
+        try %!env<p6sgi.input>.close;
+    }
+
+    method DESTROY() {
+        debug "Destroying handler";
+        self.close;
     }
 }
 
@@ -67,7 +404,6 @@ sub info($message) {
     say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
 }
 
-my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
 
 my sub debug($message) {
     say "[DEBUG] [{$*PID}] [{$*THREAD.id}] $message" if DEBUGGING;
@@ -79,14 +415,6 @@ my multi sub error(Exception $err) {
 
 my multi sub error(Str $err) {
     say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err";
-}
-
-method !create-temp-buffer($len) {
-    if $len.defined && $len < 64_000 {
-        IO::Blob.new
-    } else {
-        TempFile.new;
-    }
 }
 
 
@@ -101,7 +429,6 @@ method run(HTTP::Server::Tiny:D: Callable $app) {
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
-            LEAVE { try $conn.close }
             self!handler($conn, $app);
         }
     }
@@ -115,202 +442,44 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
             error("broken pipe");
             return;
         }
-        when X::Channel::ReceiveOnClosed {
-            error("Cannot receive a message on a closed channel");
-            return;
-        }
         default {
             error($_);
             return;
         }
     }
 
-    my $read-chan = $conn.bytes-supply.Channel;
-
-    my $req-count = 0;
-
+    my $bs = $conn.bytes-supply;
     my $pipelined_buf;
-    loop {
-        ++$req-count;
+    my $handler = HTTP::Server::Tiny::Handler.new(
+        use-keepalive      => $.max-keepalive-reqs != 1,
+        max-keepalive-reqs => $.max-keepalive-reqs,
+        server-software    => $.server-software,
+        conn               => $conn,
+        app                => $app,
+        host               => $.host,
+        port               => $.port,
+    );                  
+    $bs.tap(
+        -> $got {
+            debug "got chunk";
 
-        my $may-keepalive = $req-count < $.max-keepalive-reqs;
-        $may-keepalive = True if $pipelined_buf.defined && $pipelined_buf.elems > 0;
-        (my $keepalive, $pipelined_buf) = self!handle-connection(
-                $conn, $read-chan, $app, $may-keepalive, $req-count!=1, $pipelined_buf);
-        last unless $keepalive;
-    };
-}
-
-method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive is copy, Bool $is-keepalive,
-        $prebuf is copy) {
-    my $pipelined_buf;
-    my Buf $buf .= new;
-    my Hash $env;
-    LEAVE { try $env<p6sgi.input>.close }
-
-    # read headers
-    loop {
-        if $prebuf {
-            $buf ~= $prebuf;
-            $prebuf = Nil;
-        } else {
-            debug 'reading header';
-            $buf ~= $read-chan.receive;
-            CATCH {
-                when X::Channel::ReceiveOnClosed {
-                    debug("Connection closed by peer");
-                    return;
+            $handler.handle($got);
+            if $handler.sent-response {
+                debug 'sent response';
+                $handler.close();
+                if $handler.use-keepalive {
+                    debug "use keepalive for next request";
+                    $handler = $handler.next-request;
+                } else {
+                    $conn.close;
                 }
             }
-        }
-
-        debug 'parsing http request';
-        (my $header_len, $env) = parse-http-request($buf);
-        debug("http parsing status: $header_len");
-        if $header_len > 0 {
-            $buf = $buf.subbuf($header_len);
-            last;
-        } elsif $header_len == -1 { # incomplete header
-            next;
-        } elsif $header_len == -2 { # invalid request
-            await $conn.print("400 Bad Request\r\n\r\nBad request");
-            $conn.close;
-            return;
-        } else {
-            die "should not reach here";
-        }
-    }
-
-    $env<SERVER_NAME> = $.host;
-    $env<SERVER_PORT> = $.port;
-    $env<SCRIPT_NAME> = '';
-    $env<p6sgi.error>  = $*ERR;
-
-    # TODO: REMOTE_ADDR
-    # TODO: REMOTE_PORT
-
-    my $content-length = $env<CONTENT_LENGTH>;
-    if $content-length.defined {
-        $content-length .= Int;
-    }
-
-    my $protocol = $env<SERVER_PROTOCOL>;
-    if $use-keepalive {
-        if $protocol eq 'HTTP/1.1' {
-            if my $c = $env<HTTP_CONNECTION> {
-                if $c ~~ m:i/^\s*close\s*/ {
-                    $use-keepalive = False;
-                }
-            }
-        } else {
-            if my $c = $env<HTTP_CONNECTION> {
-                unless $c ~~ m:i/^\s*keep\-alive\s*/ {
-                    $use-keepalive = False;
-                }
-            } else {
-                $use-keepalive = False;
-            }
-        }
-    }
-
-    $env<p6sgi.input> = self!create-temp-buffer($content-length);
-
-    debug "content-length: {$content-length.perl}";
-
-    my Bool $chunked = $env<HTTP_TRANSFER_ENCODING>
-        ?? $env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked'
-        !! False;
-
-    if $content-length.defined {
-        my $cl = $content-length;
-        while $cl > 0 {
-            if $buf.elems > 0 {
-                debug "got {$buf.elems} bytes";
-                my $write-bytes = $buf.elems min $cl;
-                $env<p6sgi.input>.write($buf.subbuf(0, $write-bytes)); # XXX blocking
-                $cl -= $write-bytes;
-                debug "remains $cl";
-                last unless $cl > 0;
-            }
-
-            $buf ~= $read-chan.receive;
-        }
-    } elsif $chunked {
-        my $wrote = 0;
-        my $chunk;
-        DECHUNK: loop {
-            debug 'processing chunk';
-            if $buf.elems > 0 {
-                $chunk = $buf;
-                $buf = Buf.new;
-            } else {
-                debug "read chunk data";
-                $chunk = $read-chan.receive;
-            }
-
-            PROCESS_CHUNK: loop {
-                for 0..^$chunk.bytes-1 -> $end_pos {
-                    if $chunk[$end_pos]==0x0d && $chunk[$end_pos+1]==0x0a {
-                        debug 'found chunk marker';
-                        my $size = $chunk.subbuf(0, $end_pos);
-                        my $chunk_len = :16($size.decode('ascii'));
-                        debug "got chunk {$end_pos+2} + $chunk_len {$chunk.elems}";
-                        if $chunk_len == 0 {
-                            debug "end chunk";
-                            last DECHUNK;
-                        }
-                        if $end_pos+2+$chunk_len <= $chunk.elems {
-                            debug 'writing temp file';
-                            $env<p6sgi.input>.write($chunk.subbuf($end_pos+2, $chunk_len));
-                            $wrote += $chunk_len;
-                            $chunk = $chunk.subbuf($end_pos+2 + $chunk_len);
-                            next PROCESS_CHUNK;
-                        }
-                    }
-                }
-                last;
-            }
-        }
-        debug "wrote $wrote bytes by chunked";
-        $env<CONTENT_LENGTH> = $wrote.Str;
-    } else {
-        # TODO: chunked request support
-        if $buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
-            $pipelined_buf = $buf;
-            $use-keepalive = True; # force keep-alive
-        }
-    }
-
-    my @res;
-
-    if $env<HTTP_EXPECT> {
-        if $env<HTTP_EXPECT> eq '100-continue' {
-            await $conn.write("HTTP/1.1 100 Continue\r\n\r\n".encode('ascii'));
-        } else {
-            @res = 417,[ 'Content-Type' => 'text/plain', 'Connection' => 'close' ], [ 'Expectation Failed'.encode('utf-8') ] 
-        }
-    }
-
-    $env<p6sgi.input>.seek(0,0); # rewind
-
-    debug 'run app';
-    my ($status, $headers, $body) = sub {
-        if @res {
-            return @res;
-        }
-        CATCH {
-            default {
-                error($_);
-                return 500, [], ['Internal Server Error!'.encode('utf-8')];
-            }
-        };
-        return $app.($env);
-    }.();
-
-    debug 'sending response';
-    $use-keepalive = self!handle-response($conn, $protocol, $status, $headers, $body, $use-keepalive);
-
-    return $use-keepalive, $pipelined_buf;
+            CATCH { default { error($_); $conn.close; } };
+        },
+        quit => { debug("QUIT") },
+        done => { debug "DONE" },
+        closing => { debug("CLOSING") },
+    );
 }
 
 my @WDAY = <Sun Mon Tue Wed Thu Fri Sat Sun>;
@@ -320,133 +489,6 @@ my sub http-date() {
     return sprintf("%s, %02d-%s-%04d %02d:%02d:%02d GMT",
             @WDAY[$dt.day-of-week], $dt.day-of-month, @MON[$dt.month-1], $dt.year,
             $dt.hour, $dt.minute, $dt.second);
-}
-
-method !handle-response($csock, $protocol, $status, $headers, $body, $use-keepalive is copy) {
-    debug "sending response";
-
-    my $resp_string = "$protocol $status perl6\r\n";
-    my %send_headers;
-    for @($headers) {
-        if .key ~~ /<[\r\n]>/ {
-            die "header split";
-        }
-
-        my $lck = .key.lc;
-        if ($lck eq 'connection') {
-            if $use-keepalive && .value.lc ne 'keep-alive' {
-                $use-keepalive = False;
-            }
-        } else {
-            $resp_string ~= "{.key}: {.value}\r\n";
-        }
-
-        %send_headers{$lck} = .value;
-    }
-    unless %send_headers<server> {
-        $resp_string ~= "server: $.server-software\r\n";
-    }
-    unless %send_headers<date> {
-        $resp_string ~= "date: {http-date}\r\n";
-    }
-
-    my sub status-with-no-entity-body(int $status) {
-        return $status < 200 || $status == 204 || $status == 304;
-    }
-
-    # try to set content-length when keepalive can be used, or disable it
-    my $use-chunked = False;
-    if $protocol eq 'HTTP/1.0' {
-        if $use-keepalive {
-            # Plack::Util::content_length
-            my sub content-length($body) {
-                return Nil unless defined $body;
-                if $body ~~ Array {
-                    my $cl = 0;
-                    for @($body) {
-                        $cl += .bytes;
-                    }
-                    return $cl;
-                } elsif $body ~~ IO::Handle {
-                    return $body.s;
-                }
-            }
-
-            if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
-                # ok
-            } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
-                $resp_string ~= "content-length: $cl\015\012";
-            } else {
-                $use-keepalive = False;
-            }
-
-            $resp_string ~= "Connection: keep-alive\x0d\x0a" if $use-keepalive;
-            $resp_string ~= "Connection: close\x0d\x0a" unless $use-keepalive; # fmm
-        }
-    } elsif ( $protocol eq 'HTTP/1.1' ) {
-        if %send_headers<content-length>.defined || %send_headers<transfer-encoding>.defined {
-            # ok
-        } elsif !status-with-no-entity-body($status) {
-            $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
-            $use-chunked = True;
-        }
-        $resp_string ~= "Connection: close\x0d\x0a" unless $use-keepalive; # fmm
-    }
-    $resp_string ~= "\r\n";
-    
-    # TODO combine response header and small request body
-
-    my $resp = $resp_string.encode('ascii');
-    await $csock.write($resp);
-
-    debug "sent header";
-
-    my sub scan-psgi-body($body) {
-        gather {
-            if $body ~~ Array {
-                for @($body) -> $elem {
-                    if $elem ~~ Blob {
-                        take $elem;
-                    } elsif $elem ~~ Str {
-                        take $elem.encode;
-                    } else {
-                        die "response must be Array[Blob]. But {$elem.perl}";
-                    }
-                }
-            } elsif $body ~~ IO::Handle {
-                until $body.eof {
-                    take $body.read(1024);
-                }
-                $body.close;
-            } elsif $body ~~ Channel {
-                while my $got = $body.receive {
-                    take $got;
-                }
-                CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
-            } else {
-                die "3rd element of response object must be instance of Array or IO::Handle or Channel";
-            }
-        }
-    }
-
-    for scan-psgi-body($body) -> Blob $got {
-        next if $got.bytes == 0;
-
-        if $use-chunked {
-            my $buf = sprintf("%X", $got.bytes).encode('ascii') ~ $CRLF ~ $got ~ $CRLF;
-            await $csock.write($buf);
-        } else {
-            await $csock.write($got);
-        }
-    }
-    if $use-chunked {
-        debug "send end mark";
-        await $csock.write("0".encode('ascii') ~ $CRLF ~ $CRLF);
-    }
-
-    debug "sent body" if DEBUGGING;
-
-    return $use-keepalive;
 }
 
 =begin pod
