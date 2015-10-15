@@ -4,6 +4,7 @@ unit class HTTP::Server::Tiny;
 use HTTP::Parser; # parse-http-request
 use File::Temp;
 use IO::Blob;
+use HTTP::Status;
 
 my Buf $CRLF = Buf.new(0x0d, 0x0a);
 
@@ -325,7 +326,7 @@ my sub http-date() {
 method !handle-response($csock, $protocol, $status, $headers, $body, $use-keepalive is copy) {
     debug "sending response";
 
-    my $resp_string = "$protocol $status perl6\r\n";
+    my $resp_string = "$protocol $status {get_http_status_msg $status}\r\n";
     my %send_headers;
     for @($headers) {
         if .key ~~ /<[\r\n]>/ {
