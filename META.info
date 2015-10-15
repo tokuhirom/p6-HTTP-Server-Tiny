@@ -8,6 +8,7 @@
   },
   "depends" : [
     "HTTP::Parser",
+    "HTTP::Status",
     "IO::Blob"
   ],
   "description" : "a simple HTTP server for Perl6",
