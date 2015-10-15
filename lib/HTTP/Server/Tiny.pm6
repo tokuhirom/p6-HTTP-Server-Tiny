@@ -115,7 +115,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_NAME> = $.host;
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
-            %!env<p6sgi.error>  = $*ERR;
+            %!env<p6sgi.errors> = $*ERR;
 
             # TODO: REMOTE_ADDR
             # TODO: REMOTE_PORT
