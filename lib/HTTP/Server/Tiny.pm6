@@ -7,20 +7,22 @@ use IO::Blob;
 
 my Buf $CRLF = Buf.new(0x0d, 0x0a);
 
+my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
+
 my class TempFile {
     has $.filename;
     has $.fh;
 
     method new() {
-        # XXX insecure
-        my $filename;
-        loop {
-            $filename = $*TMPDIR.child("p6-httpd" ~ nonce());
-            last unless $filename.e;
+        for 1..10 {
+            my $filename = $*TMPDIR.child("p6-httpd" ~ nonce());
+            my $fh = open $filename, :rw, :exclusive;
+            $fh.path.chmod(0o600);
+            debug "filename: $filename: {$fh.opened}";
+            return self.bless(filename => $filename, fh => $fh);
+            CATCH { default { debug($_) if DEBUGGING; next } }
         }
-        my $fh = open $filename, :rw;
-        debug "filename: $filename: {$fh.opened}";
-        self.bless(filename => $filename, fh => $fh);
+        die "cannot create temporary file";
     }
 
     my sub nonce () { return (".{$*PID}." ~ flat('a'..'z', 'A'..'Z', 0..9, '_').roll(10).join) }
@@ -66,8 +68,6 @@ has $.max-keepalive-reqs = 1;
 sub info($message) {
     say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
 }
-
-my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
 
 my sub debug($message) {
     say "[DEBUG] [{$*PID}] [{$*THREAD.id}] $message" if DEBUGGING;
