@@ -148,6 +148,8 @@ my class HTTP::Server::Tiny::Handler {
             $!chunked = %!env<HTTP_TRANSFER_ENCODING>
                 ?? %!env<HTTP_TRANSFER_ENCODING>.lc eq 'chunked'
                 !! False;
+
+            $!header-parsed = True;
         } elsif $header_len == -1 { # incomplete header
             debug 'incomplete header' unless DEBUGGING;
         } elsif $header_len == -2 { # invalid request
