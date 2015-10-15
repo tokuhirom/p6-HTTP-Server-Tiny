@@ -249,10 +249,8 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
             }
 
             PROCESS_CHUNK: loop {
-                my int $end_pos = 0;
-                my Buf $end_marker = Buf.new(13, 10);
-                while $end_pos < $chunk.bytes {
-                    if ($end_marker eq $chunk.subbuf($end_pos, 2)) {
+                for 0..^$chunk.bytes-1 -> $end_pos {
+                    if $chunk[$end_pos]==0x0d && $chunk[$end_pos+1]==0x0a {
                         debug 'found chunk marker';
                         my $size = $chunk.subbuf(0, $end_pos);
                         my $chunk_len = :16($size.decode('ascii'));
@@ -269,7 +267,6 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
                             next PROCESS_CHUNK;
                         }
                     }
-                    $end_pos++;
                 }
                 last;
             }
