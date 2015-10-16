@@ -214,8 +214,6 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         }
     }
 
-    $env<p6sgi.input> = self!create-temp-buffer($content-length);
-
     debug "content-length: {$content-length.perl}";
 
     my Bool $chunked = $env<HTTP_TRANSFER_ENCODING>
@@ -223,6 +221,8 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         !! False;
 
     if $content-length.defined {
+        $env<p6sgi.input> = self!create-temp-buffer($content-length);
+
         my $cl = $content-length;
         while $cl > 0 {
             if $buf.elems > 0 {
@@ -237,6 +237,8 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
             $buf ~= $read-chan.receive;
         }
     } elsif $chunked {
+        $env<p6sgi.input> = self!create-temp-buffer($content-length);
+
         my $wrote = 0;
         my $chunk;
         DECHUNK: loop {
@@ -275,6 +277,8 @@ method !handle-connection($conn, $read-chan, Callable $app, Bool $use-keepalive 
         debug "wrote $wrote bytes by chunked";
         $env<CONTENT_LENGTH> = $wrote.Str;
     } else {
+        $env<p6sgi.input> = IO::Blob.new;
+
         # TODO: chunked request support
         if $buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
             $pipelined_buf = $buf;
