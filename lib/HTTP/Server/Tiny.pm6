@@ -98,7 +98,7 @@ method run(HTTP::Server::Tiny:D: Callable $app) {
     signal(SIGPIPE).tap({ debug("Got SIGPIPE") }) unless $*DISTRO.is-win;
 
     # TODO: I want to use IO::Socket::Async#port method to use port 0.
-    say "http server is ready: http://$.host:$.port/ (pid:$*PID)";
+    say "http server is ready: http://$.host:$.port/ (pid:$*PID, keepalive: $.max-keepalive-reqs)";
 
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
