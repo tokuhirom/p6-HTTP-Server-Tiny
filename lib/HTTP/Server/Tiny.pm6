@@ -84,7 +84,9 @@ my class HTTP::Server::Tiny::Handler {
         unless $!header-parsed {
             self!parse-header();
         }
-        self!parse-body();
+        if $!header-parsed {
+            self!parse-body();
+        }
     }
 
     method next-request() {
@@ -92,17 +94,20 @@ my class HTTP::Server::Tiny::Handler {
 
         my $use-keepalive = $.request-count < $.max-keepalive-reqs
             && $!buf.defined && $!buf.elems > 0;
-        HTTP::Server::Tiny::Handler.new(
+        my $handler = HTTP::Server::Tiny::Handler.new(
             use-keepalive      => $!max-keepalive-reqs < $!request-count,
             request-count      => $!request-count+1,
             max-keepalive-reqs => $!max-keepalive-reqs,
             server-software    => $!server-software,
             app                => $!app,
             conn               => $!conn,
-            buf                => $!buf,
             host               => $!host,
             port               => $!port,
         );
+        if $!buf.elems > 0 {
+            $handler.handle($!buf);
+        }
+        $handler;
     }
 
     method !parse-header() {
@@ -290,7 +295,7 @@ my class HTTP::Server::Tiny::Handler {
                     if $body ~~ Array {
                         my $cl = 0;
                         for @($body) {
-                            $cl += .bytes;
+                            $cl += ($_ ~~ Str ?? .encode() !! $_).bytes;
                         }
                         return $cl;
                     } elsif $body ~~ IO::Handle {
@@ -301,7 +306,8 @@ my class HTTP::Server::Tiny::Handler {
                 if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
                     # ok
                 } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
-                    $resp_string ~= "content-length: $cl\015\012";
+                    debug "calcurated content-length: $cl" if DEBUGGING;
+                    $resp_string ~= "content-length: $cl\x0d\x0a";
                 } else {
                     $!use-keepalive = False;
                 }
