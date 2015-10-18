@@ -126,20 +126,20 @@ my class HTTP::Server::Tiny::Handler {
             }
 
             $!protocol = %!env<SERVER_PROTOCOL>;
-            if $.use-keepalive {
+            if $!use-keepalive {
                 if $!protocol eq 'HTTP/1.1' {
                     if my $c = %!env<HTTP_CONNECTION> {
                         if $c ~~ m:i/^\s*close\s*/ {
-                            $.use-keepalive = False;
+                            $!use-keepalive = False;
                         }
                     }
                 } else {
                     if my $c = %!env<HTTP_CONNECTION> {
                         unless $c ~~ m:i/^\s*keep\-alive\s*/ {
-                            $.use-keepalive = False;
+                            $!use-keepalive = False;
                         }
                     } else {
-                        $.use-keepalive = False;
+                        $!use-keepalive = False;
                     }
                 }
             }
@@ -209,7 +209,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<p6sgi.input> = IO::Blob.new;
 
             if $!buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
-                $.use-keepalive = True; # force keep-alive
+                $!use-keepalive = True; # force keep-alive
             } else {
                 $!buf = buf8.new; # clear buffer
             }
