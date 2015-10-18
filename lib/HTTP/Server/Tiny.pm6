@@ -290,7 +290,17 @@ my class HTTP::Server::Tiny::Handler {
                     if $body ~~ Array {
                         my $cl = 0;
                         for @($body) {
-                            $cl += .bytes;
+                            given $_ {
+                                when Str {
+                                    $cl += .encode().bytes;
+                                }
+                                when Blob {
+                                    $cl += .bytes;
+                                }
+                                default {
+                                    die "unsupported response type: {.gist}";
+                                }
+                            }
                         }
                         return $cl;
                     } elsif $body ~~ IO::Handle {
