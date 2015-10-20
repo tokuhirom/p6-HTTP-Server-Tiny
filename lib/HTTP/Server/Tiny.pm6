@@ -272,6 +272,38 @@ my class HTTP::Server::Tiny::Handler {
         }
     }
 
+    sub status-with-no-entity-body(int $status) {
+        return $status < 200 || $status == 204 || $status == 304;
+    }
+
+    sub scan-psgi-body($body) {
+        gather {
+            if $body ~~ Array {
+                for @($body) -> $elem {
+                    if $elem ~~ Blob {
+                        take $elem;
+                    } elsif $elem ~~ Str {
+                        take $elem.encode;
+                    } else {
+                        die "response must be Array[Blob]. But {$elem.perl}";
+                    }
+                }
+            } elsif $body ~~ IO::Handle {
+                until $body.eof {
+                    take $body.read(1024);
+                }
+                $body.close;
+            } elsif $body ~~ Channel {
+                while my $got = $body.receive {
+                    take $got;
+                }
+                CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
+            } else {
+                die "3rd element of response object must be instance of Array or IO::Handle or Channel";
+            }
+        }
+    }
+
     method !send-response(int $status, $headers, $body) {
         debug "sending response $status";
 
@@ -298,10 +330,6 @@ my class HTTP::Server::Tiny::Handler {
         }
         unless %send_headers<date> {
             $resp_string ~= "date: {http-date}\r\n";
-        }
-
-        my sub status-with-no-entity-body(int $status) {
-            return $status < 200 || $status == 204 || $status == 304;
         }
 
         # try to set content-length when keepalive can be used, or disable it
@@ -336,34 +364,6 @@ my class HTTP::Server::Tiny::Handler {
         await $.conn.write($resp);
 
         debug "sent header";
-
-        my sub scan-psgi-body($body) {
-            gather {
-                if $body ~~ Array {
-                    for @($body) -> $elem {
-                        if $elem ~~ Blob {
-                            take $elem;
-                        } elsif $elem ~~ Str {
-                            take $elem.encode;
-                        } else {
-                            die "response must be Array[Blob]. But {$elem.perl}";
-                        }
-                    }
-                } elsif $body ~~ IO::Handle {
-                    until $body.eof {
-                        take $body.read(1024);
-                    }
-                    $body.close;
-                } elsif $body ~~ Channel {
-                    while my $got = $body.receive {
-                        take $got;
-                    }
-                    CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
-                } else {
-                    die "3rd element of response object must be instance of Array or IO::Handle or Channel";
-                }
-            }
-        }
 
         for scan-psgi-body($body) -> Blob $got {
             next if $got.bytes == 0;
