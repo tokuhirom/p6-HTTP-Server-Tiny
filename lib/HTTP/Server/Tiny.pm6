@@ -248,62 +248,6 @@ my class HTTP::Server::Tiny::Handler {
         self!send-response($status, $headers, $body);
     }
 
-    # Plack::Util::content_length
-    sub content-length($body) {
-        return Nil unless defined $body;
-        if $body ~~ Array {
-            my $cl = 0;
-            for @($body) {
-                given $_ {
-                    when Str {
-                        $cl += .encode().bytes;
-                    }
-                    when Blob {
-                        $cl += .bytes;
-                    }
-                    default {
-                        die "unsupported response type: {.gist}";
-                    }
-                }
-            }
-            return $cl;
-        } elsif $body ~~ IO::Handle {
-            return $body.s;
-        }
-    }
-
-    sub status-with-no-entity-body(int $status) {
-        return $status < 200 || $status == 204 || $status == 304;
-    }
-
-    sub scan-psgi-body($body) {
-        gather {
-            if $body ~~ Array {
-                for @($body) -> $elem {
-                    if $elem ~~ Blob {
-                        take $elem;
-                    } elsif $elem ~~ Str {
-                        take $elem.encode;
-                    } else {
-                        die "response must be Array[Blob]. But {$elem.perl}";
-                    }
-                }
-            } elsif $body ~~ IO::Handle {
-                until $body.eof {
-                    take $body.read(1024);
-                }
-                $body.close;
-            } elsif $body ~~ Channel {
-                while my $got = $body.receive {
-                    take $got;
-                }
-                CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
-            } else {
-                die "3rd element of response object must be instance of Array or IO::Handle or Channel";
-            }
-        }
-    }
-
     method !send-response(int $status, $headers, $body) {
         debug "sending response $status";
 
@@ -412,7 +356,7 @@ has $.host = '127.0.0.1';
 has Str $.server-software = "HTTP::Server::Tiny";
 has $.max-keepalive-reqs = 1;
 
-sub info($message) {
+my sub info($message) {
     say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
 }
 
@@ -427,6 +371,62 @@ my multi sub error(Exception $err) {
 
 my multi sub error(Str $err) {
     say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err";
+}
+
+# Plack::Util::content_length
+my sub content-length($body) {
+    return Nil unless defined $body;
+    if $body ~~ Array {
+        my $cl = 0;
+        for @($body) {
+            given $_ {
+                when Str {
+                    $cl += .encode().bytes;
+                }
+                when Blob {
+                    $cl += .bytes;
+                }
+                default {
+                    die "unsupported response type: {.gist}";
+                }
+            }
+        }
+        return $cl;
+    } elsif $body ~~ IO::Handle {
+        return $body.s;
+    }
+}
+
+my sub status-with-no-entity-body(int $status) {
+    return $status < 200 || $status == 204 || $status == 304;
+}
+
+my sub scan-psgi-body($body) {
+    gather {
+        if $body ~~ Array {
+            for @($body) -> $elem {
+                if $elem ~~ Blob {
+                    take $elem;
+                } elsif $elem ~~ Str {
+                    take $elem.encode;
+                } else {
+                    die "response must be Array[Blob]. But {$elem.perl}";
+                }
+            }
+        } elsif $body ~~ IO::Handle {
+            until $body.eof {
+                take $body.read(1024);
+            }
+            $body.close;
+        } elsif $body ~~ Channel {
+            while my $got = $body.receive {
+                take $got;
+            }
+            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
+        } else {
+            die "3rd element of response object must be instance of Array or IO::Handle or Channel";
+        }
+    }
 }
 
 
