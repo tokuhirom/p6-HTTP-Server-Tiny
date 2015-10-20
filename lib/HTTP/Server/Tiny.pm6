@@ -311,7 +311,7 @@ my class HTTP::Server::Tiny::Handler {
                 if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
                     # ok
                 } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
-                    $resp_string ~= "content-length: $cl\015\012";
+                    $resp_string ~= "content-length: $cl\x0d\x0a";
                 } else {
                     $!use-keepalive = False;
                 }
