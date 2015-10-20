@@ -248,6 +248,30 @@ my class HTTP::Server::Tiny::Handler {
         self!send-response($status, $headers, $body);
     }
 
+    # Plack::Util::content_length
+    sub content-length($body) {
+        return Nil unless defined $body;
+        if $body ~~ Array {
+            my $cl = 0;
+            for @($body) {
+                given $_ {
+                    when Str {
+                        $cl += .encode().bytes;
+                    }
+                    when Blob {
+                        $cl += .bytes;
+                    }
+                    default {
+                        die "unsupported response type: {.gist}";
+                    }
+                }
+            }
+            return $cl;
+        } elsif $body ~~ IO::Handle {
+            return $body.s;
+        }
+    }
+
     method !send-response(int $status, $headers, $body) {
         debug "sending response $status";
 
@@ -284,30 +308,6 @@ my class HTTP::Server::Tiny::Handler {
         my $use-chunked = False;
         if $!protocol eq 'HTTP/1.0' {
             if $!use-keepalive {
-                # Plack::Util::content_length
-                my sub content-length($body) {
-                    return Nil unless defined $body;
-                    if $body ~~ Array {
-                        my $cl = 0;
-                        for @($body) {
-                            given $_ {
-                                when Str {
-                                    $cl += .encode().bytes;
-                                }
-                                when Blob {
-                                    $cl += .bytes;
-                                }
-                                default {
-                                    die "unsupported response type: {.gist}";
-                                }
-                            }
-                        }
-                        return $cl;
-                    } elsif $body ~~ IO::Handle {
-                        return $body.s;
-                    }
-                }
-
                 if %send_headers<content-length>.defined && %send_headers<transfer-encoding>.defined {
                     # ok
                 } elsif !status-with-no-entity-body($status) && (my $cl = content-length($body)) {
