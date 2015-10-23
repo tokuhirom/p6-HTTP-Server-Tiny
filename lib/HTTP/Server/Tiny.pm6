@@ -56,6 +56,7 @@ my class TempFile {
     }
 
     method DESTROY {
+        debug 'destroy tempfile';
         self.close
     }
 }
@@ -77,6 +78,7 @@ my class HTTP::Server::Tiny::Handler {
     has Str $.server-software is required;
     has int $.request-count = 1;
     has int $.max-keepalive-reqs is required;
+    has Bool $!connection-upgrade = False;
 
     method handle($got) {
         $!buf ~= $got;
@@ -221,6 +223,7 @@ my class HTTP::Server::Tiny::Handler {
             if %!env<HTTP_EXPECT> eq '100-continue' {
                 await $.conn.print("HTTP/1.1 100 Continue\r\n\r\n");
             } else {
+                debug "Expectation failed" if DEBUGGING;
                 my $body = 'Expectation Failed';
                 self!send-response(
                     417, [
@@ -261,8 +264,13 @@ my class HTTP::Server::Tiny::Handler {
 
             my $lck = .key.lc;
             if ($lck eq 'connection') {
-                if $!use-keepalive && .value.lc ne 'keep-alive' {
-                    $!use-keepalive = False;
+                if .value.lc eq 'upgrade' {
+                    $!connection-upgrade = True;
+                    $resp_string ~= "{.key}: {.value}\r\n";
+                } else {
+                    if $!use-keepalive && .value.lc ne 'keep-alive' {
+                        $!use-keepalive = False;
+                    }
                 }
             } else {
                 $resp_string ~= "{.key}: {.value}\r\n";
@@ -299,7 +307,9 @@ my class HTTP::Server::Tiny::Handler {
                 $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
                 $use-chunked = True;
             }
-            $resp_string ~= "Connection: close\x0d\x0a" unless $!use-keepalive; # fmm
+            if !$!use-keepalive && !$!connection-upgrade {
+                $resp_string ~= "Connection: close\x0d\x0a";
+            }
         }
         $resp_string ~= "\r\n";
         
@@ -425,9 +435,11 @@ my sub scan-psgi-body($body) {
             }
             CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } elsif $body ~~ Supply {
-            $body.tap(-> $got {
-                take $got
-            });
+            my $ch = $body.Channel;
+            while my $got = $ch.receive {
+                take $got;
+            }
+            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } else {
             die "3rd element of response object must be instance of Array or IO::Handle or Channel";
         }
@@ -482,16 +494,18 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
 
             $handler.handle($got);
             if $handler.sent-response {
-                debug 'sent response';
+                debug 'sent response' if DEBUGGING;
                 $handler.close();
                 if $handler.use-keepalive {
                     debug "use keepalive for next request";
                     $handler = $handler.next-request;
                 } else {
-                    $conn.close;
+                    debug 'closing connection' if DEBUGGING;
+                    try $conn.close;
+                    debug 'closed connection' if DEBUGGING;
                 }
             }
-            CATCH { default { error($_); $conn.close; } };
+            CATCH { default { error($_); try $conn.close; } };
         },
         quit => { debug("QUIT") },
         done => { debug "DONE" },
