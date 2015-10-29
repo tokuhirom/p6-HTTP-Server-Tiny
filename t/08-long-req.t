@@ -36,4 +36,3 @@ while my $got = $sock.recv {
 my ($headers, $body) = $buf.split(/$CRLF$CRLF/, 2);
 is $body, "hello\n" x 1000;
 
-exit 0; # There is no way to kill the server thread.

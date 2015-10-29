@@ -39,4 +39,3 @@ my $expected = {
 };
 is-deeply $dat, $expected;
 
-exit 0; # There is no way to kill the server thread.
