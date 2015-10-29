@@ -87,3 +87,4 @@ ok $buf.decode('utf-8').index([
     "fugafuga10"
 ].join("")) > 0;
 
+exit 0; # There is no way to kill the server thread.

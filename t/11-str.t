@@ -28,3 +28,4 @@ my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
 ok $resp<success>;
 is $resp<content>, 'hello';
 
+exit 0; # There is no way to kill the server thread.

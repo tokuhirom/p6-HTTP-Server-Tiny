@@ -35,3 +35,4 @@ ok $buf ~~ /hello/;
 
 done-testing;
 
+exit 0; # There is no way to kill the server thread.

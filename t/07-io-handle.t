@@ -1,5 +1,4 @@
 use v6;
-# HELLO
 
 use Test;
 use lib 't/lib';
@@ -29,3 +28,4 @@ my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
     content => 'foo=bar');
 ok $resp<content> ~~ /HELLO/;
 
+exit 0; # There is no way to kill the server thread.

@@ -28,3 +28,4 @@ my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
     content => 'foo=bar');
 is($resp<content>, "foo=bar");
 
+exit 0; # There is no way to kill the server thread.
