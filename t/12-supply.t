@@ -23,7 +23,7 @@ Thread.start({
             ();
         };
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",

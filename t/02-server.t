@@ -18,7 +18,7 @@ my $thr = Thread.start({
     $server.run(sub ($env) {
         return 200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 
