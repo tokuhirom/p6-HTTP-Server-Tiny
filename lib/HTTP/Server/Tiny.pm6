@@ -118,6 +118,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
             %!env<p6sgi.errors> = $*ERR;
+            %!env<p6sgi.url-scheme> = 'http';
             %!env<p6sgix.io>     = $!conn; # for websocket support
 
             # TODO: REMOTE_ADDR
