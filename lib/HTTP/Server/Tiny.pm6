@@ -2,7 +2,6 @@ use v6;
 unit class HTTP::Server::Tiny;
 
 use HTTP::Parser; # parse-http-request
-use File::Temp;
 use IO::Blob;
 use HTTP::Status;
 
