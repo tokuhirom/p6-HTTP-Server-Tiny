@@ -36,7 +36,7 @@ my class TempFile {
         $.fh.read: $bytes
     }
 
-    method seek(Int:D $offset, Int:D $whence) {
+    method seek(Int:D $offset, SeekType:D $whence) {
         $.fh.seek($offset, $whence);
     }
 
@@ -237,7 +237,7 @@ my class HTTP::Server::Tiny::Handler {
     }
 
     method !run-app() {
-        %!env<p6sgi.input>.seek(0,0); # rewind
+        %!env<p6sgi.input>.seek(0,SeekFromBeginning); # rewind
 
         my ($status, $headers, $body) = sub {
             CATCH {
