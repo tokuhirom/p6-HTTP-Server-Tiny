@@ -430,16 +430,16 @@ my sub scan-psgi-body($body) {
             }
             $body.close;
         } elsif $body ~~ Channel {
-            while my $got = $body.receive {
-                take $got;
+            earliest $body {
+                more $body -> $val { take $val }
+                done $body -> { debug('closed channel') }
             }
-            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } elsif $body ~~ Supply {
-            my $ch = $body.Channel;
-            while my $got = $ch.receive {
-                take $got;
+            $body = $body.Channel;
+            earliest $body {
+                more $body -> $val { take $val }
+                done $body -> { debug('closed channel') }
             }
-            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } else {
             die "3rd element of response object must be instance of Array or IO::Handle or Channel";
         }
