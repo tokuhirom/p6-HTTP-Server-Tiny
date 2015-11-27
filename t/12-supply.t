@@ -15,12 +15,10 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 Thread.start({
     $server.run(sub ($env) {
-        return 200, ['Content-Type' => 'text/plain'], on -> \s {
+        return 200, ['Content-Type' => 'text/plain'], supply {
             for 1..100 {
-                s.emit($_.Str.encode);
+                emit($_.Str.encode);
             }
-            s.done;
-            ();
         };
     });
 }, :app_lifetime);
