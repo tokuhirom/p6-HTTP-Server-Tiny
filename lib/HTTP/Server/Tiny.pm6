@@ -477,7 +477,7 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
         }
     }
 
-    my $bs = $conn.bytes-supply;
+    my $bs = $conn.Supply(:bin);
     my $pipelined_buf;
     my $handler = HTTP::Server::Tiny::Handler.new(
         use-keepalive      => $.max-keepalive-reqs != 1,
