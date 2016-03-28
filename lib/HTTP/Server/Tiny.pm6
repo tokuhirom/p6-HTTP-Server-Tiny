@@ -252,7 +252,7 @@ my class HTTP::Server::Tiny::Handler {
         self!send-response($status, $headers, $body);
     }
 
-    method !send-response(int $status, $headers, $body) {
+    method !send-response($status, $headers, $body) {
         debug "sending response $status";
 
         my $resp_string = "$!protocol $status {get_http_status_msg $status}\r\n";
@@ -303,7 +303,7 @@ my class HTTP::Server::Tiny::Handler {
         } elsif $!protocol eq 'HTTP/1.1' {
             if %send_headers<content-length>.defined || %send_headers<transfer-encoding>.defined {
                 # ok
-            } elsif !status-with-no-entity-body($status) {
+            } elsif !status-with-no-entity-body(+$status) {
                 $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
                 $use-chunked = True;
             }
