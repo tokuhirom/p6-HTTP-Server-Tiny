@@ -1,7 +1,7 @@
 {
   "name" : "HTTP::Server::Tiny",
   "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
-  "perl" : "v6",
+  "perl" : "6",
   "build-depends" : [ ],
   "provides" : {
     "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6"
