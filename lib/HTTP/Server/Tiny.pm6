@@ -246,7 +246,11 @@ my class HTTP::Server::Tiny::Handler {
                     return 500, [], ['Internal Server Error!'];
                 }
             };
-            return $!app.(%!env);
+            my $result = $!app.(%!env);
+            if $result ~~ Promise {
+                return $result.result;
+            }
+            return $result;
         }();
         debug "ran app: $status" if DEBUGGING;
         self!send-response($status, $headers, $body);
@@ -412,17 +416,21 @@ my sub status-with-no-entity-body(int $status) {
     return $status < 200 || $status == 204 || $status == 304;
 }
 
+sub take-blobified($elem) {
+    if $elem ~~ Blob {
+        take $elem;
+    } elsif $elem ~~ Mu {
+        take $elem.Str.encode;
+    } else {
+        die "response must be Array[Blob]. But {$elem.perl}";
+    }
+}
+
 my sub scan-psgi-body($body) {
     gather {
         if $body ~~ Array {
             for @($body) -> $elem {
-                if $elem ~~ Blob {
-                    take $elem;
-                } elsif $elem ~~ Str {
-                    take $elem.encode;
-                } else {
-                    die "response must be Array[Blob]. But {$elem.perl}";
-                }
+                take-blobified $elem;
             }
         } elsif $body ~~ IO::Handle {
             until $body.eof {
@@ -431,13 +439,13 @@ my sub scan-psgi-body($body) {
             $body.close;
         } elsif $body ~~ Channel {
             while my $got = $body.receive {
-                take $got;
+                take-blobified $got;
             }
             CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } elsif $body ~~ Supply {
             my $ch = $body.Channel;
             while my $got = $ch.receive {
-                take $got;
+                take-blobified $got;
             }
             CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
         } else {
