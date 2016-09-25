@@ -15,19 +15,14 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 Thread.start({
     $server.run(sub ($env) {
-        return 200, ['Content-Type' => 'text/plain'], supply {
-            for 1..100 {
-                emit($_.Str.encode);
-            }
-        };
+        my $s = Supply.from-list((1..100).map: *.Str.encode);
+        return 200, ['Content-Type' => 'text/plain'], $s;
     });
 }, :app_lifetime);
 
 wait_port($port);
-my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
-   headers => { 
-        'content-type' => 'application/x-www-form-urlencoded'
-    },
-    content => 'foo=bar');
-is($resp<content>, "123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100");
+my $prog = $*PROGRAM.parent.child('bin/test-client').Str;
+
+my $resp = run($*EXECUTABLE.Str, $prog, $port, :out).out.slurp-rest;
+is($resp.chomp, "123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100");
 
