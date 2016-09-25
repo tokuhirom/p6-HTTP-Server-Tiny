@@ -1,6 +1,7 @@
 use v6;
 
 use Test;
+use JSON::Fast;
 use lib 't/lib';
 use Test::TCP;
 use HTTP::Server::Tiny;
