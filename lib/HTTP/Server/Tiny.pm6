@@ -262,6 +262,13 @@ my class HTTP::Server::Tiny::Handler {
     }
 
     method !send-response($status, $headers, $body) {
+
+        CATCH {
+            when /"broken pipe"/ {
+                debug("client close sending response");
+                return;
+            }
+        }
         debug "sending response $status";
 
         my $resp_string = "$!protocol $status {get_http_status_msg $status}\r\n";
