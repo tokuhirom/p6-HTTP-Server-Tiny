@@ -455,7 +455,7 @@ my sub scan-psgi-body($body) {
 }
 
 
-method run(HTTP::Server::Tiny:D: Callable $app) {
+method run(HTTP::Server::Tiny:D: Callable $app, Promise :$control-promise = Promise.new) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
     # -- tokuhirom@20151003
@@ -467,6 +467,10 @@ method run(HTTP::Server::Tiny:D: Callable $app) {
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
             self!handler($conn, $app);
+        }
+        whenever $control-promise {
+            debug("Exiting on control promise");
+            done;
         }
     }
 }
@@ -563,9 +567,12 @@ HTTP::Server::Tiny is a standalone HTTP/1.1 web server for perl6.
 
 Create new instance.
 
-=item C<$server.run(Callable $app)>
+=item C<$server.run(Callable $app, Promise :$control-promise)>
 
-Run http server with P6SGI app.
+Run http server with P6SGI app C<$app>. 
+
+If the optional named parameter C<control-promise> is provided with a
+C<Promise> then the server loop will be quit when the promise is kept.
 
 =head1 TODO
 
@@ -573,7 +580,7 @@ Run http server with P6SGI app.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2015 Tokuhiro Matsuno <tokuhirom@gmail.com>
+Copyright 2015, 2016 Tokuhiro Matsuno <tokuhirom@gmail.com>
 
 This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
 
