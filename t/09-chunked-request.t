@@ -18,7 +18,7 @@ Thread.start({
         my $body = $env<p6sgi.input>.slurp-rest(:bin);
         return 200, ['Content-Type' => 'text/plain'], [$body]
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $sock = IO::Socket::INET.new(
@@ -27,7 +27,7 @@ my $sock = IO::Socket::INET.new(
 );
 for (
     "POST /resource/test HTTP/1.1\r\n",
-    "User-Agent: curl/7.28.0\r\rn",
+    "User-Agent: curl/7.28.0\r\n",
     "Host: localhost:8888\r\n",
     "Content-type: text/plain\r\n",
     "Transfer-Encoding: chunked\r\n",

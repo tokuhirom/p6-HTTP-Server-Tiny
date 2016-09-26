@@ -19,7 +19,7 @@ Thread.start({
         my $body = $env<p6sgi.input>.slurp-rest: :bin;
         return 200, ['Content-Type' => 'text/plain'], [$body]
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $sock = IO::Socket::INET.new(host => '127.0.0.1', port => $port);

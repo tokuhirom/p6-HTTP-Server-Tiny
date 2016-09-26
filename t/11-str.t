@@ -20,7 +20,7 @@ Thread.start({
             ['hello']
         ;
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 

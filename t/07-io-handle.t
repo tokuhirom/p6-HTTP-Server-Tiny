@@ -19,7 +19,7 @@ Thread.start({
         my $fh = open 't/07-io-handle.t', :r;
         return 200, ['Content-Type' => 'text/plain'], $fh
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",

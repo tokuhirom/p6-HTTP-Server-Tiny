@@ -16,7 +16,7 @@ Thread.start({
     $server.run(sub ($env) {
         die;
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");

@@ -24,7 +24,7 @@ Thread.start({
         };
         return 200, ['Content-Type' => 'text/plain'], $channel
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",

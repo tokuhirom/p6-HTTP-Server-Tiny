@@ -1,6 +1,7 @@
 use v6;
 
 use Test;
+use JSON::Fast;
 use lib 't/lib';
 use Test::TCP;
 use HTTP::Server::Tiny;
@@ -25,7 +26,7 @@ Thread.start({
             [$json.encode('utf-8')]
         );
     });
-});
+}, :app_lifetime);
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");

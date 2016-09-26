@@ -2,7 +2,6 @@ use v6;
 unit class HTTP::Server::Tiny;
 
 use HTTP::Parser; # parse-http-request
-use File::Temp;
 use IO::Blob;
 use HTTP::Status;
 
@@ -37,7 +36,7 @@ my class TempFile {
         $.fh.read: $bytes
     }
 
-    method seek(Int:D $offset, Int:D $whence) {
+    method seek(Int:D $offset, SeekType:D $whence) {
         $.fh.seek($offset, $whence);
     }
 
@@ -56,6 +55,7 @@ my class TempFile {
     }
 
     method DESTROY {
+        debug 'destroy tempfile';
         self.close
     }
 }
@@ -73,10 +73,11 @@ my class HTTP::Server::Tiny::Handler {
     has $!wrote-body-size = 0;
     has $.sent-response = False;
     has Callable $.app is required;
-    has Str $!protocol;
+    has Str $!protocol = "HTTP/1.0";
     has Str $.server-software is required;
     has int $.request-count = 1;
     has int $.max-keepalive-reqs is required;
+    has Bool $!connection-upgrade = False;
 
     method handle($got) {
         $!buf ~= $got;
@@ -121,6 +122,8 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
             %!env<p6sgi.errors> = $*ERR;
+            %!env<p6sgi.url-scheme> = 'http';
+            %!env<p6sgix.io>     = $!conn; # for websocket support
 
             # TODO: REMOTE_ADDR
             # TODO: REMOTE_PORT
@@ -131,20 +134,20 @@ my class HTTP::Server::Tiny::Handler {
             }
 
             $!protocol = %!env<SERVER_PROTOCOL>;
-            if $.use-keepalive {
+            if $!use-keepalive {
                 if $!protocol eq 'HTTP/1.1' {
                     if my $c = %!env<HTTP_CONNECTION> {
                         if $c ~~ m:i/^\s*close\s*/ {
-                            $.use-keepalive = False;
+                            $!use-keepalive = False;
                         }
                     }
                 } else {
                     if my $c = %!env<HTTP_CONNECTION> {
                         unless $c ~~ m:i/^\s*keep\-alive\s*/ {
-                            $.use-keepalive = False;
+                            $!use-keepalive = False;
                         }
                     } else {
-                        $.use-keepalive = False;
+                        $!use-keepalive = False;
                     }
                 }
             }
@@ -214,7 +217,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<p6sgi.input> = IO::Blob.new;
 
             if $!buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
-                $.use-keepalive = True; # force keep-alive
+                $!use-keepalive = True; # force keep-alive
             } else {
                 $!buf = buf8.new; # clear buffer
             }
@@ -225,6 +228,7 @@ my class HTTP::Server::Tiny::Handler {
             if %!env<HTTP_EXPECT> eq '100-continue' {
                 await $.conn.print("HTTP/1.1 100 Continue\r\n\r\n");
             } else {
+                debug "Expectation failed" if DEBUGGING;
                 my $body = 'Expectation Failed';
                 self!send-response(
                     417, [
@@ -238,7 +242,7 @@ my class HTTP::Server::Tiny::Handler {
     }
 
     method !run-app() {
-        %!env<p6sgi.input>.seek(0,0); # rewind
+        %!env<p6sgi.input>.seek(0,SeekFromBeginning); # rewind
 
         my ($status, $headers, $body) = sub {
             CATCH {
@@ -247,14 +251,18 @@ my class HTTP::Server::Tiny::Handler {
                     return 500, [], ['Internal Server Error!'];
                 }
             };
-            return $!app.(%!env);
+            my $result = $!app.(%!env);
+            if $result ~~ Promise {
+                return $result.result;
+            }
+            return $result;
         }();
         debug "ran app: $status" if DEBUGGING;
         self!send-response($status, $headers, $body);
     }
 
-    method !send-response(int $status, $headers, $body) {
-        debug "sending response";
+    method !send-response($status, $headers, $body) {
+        debug "sending response $status";
 
         my $resp_string = "$!protocol $status {get_http_status_msg $status}\r\n";
         my %send_headers;
@@ -265,8 +273,13 @@ my class HTTP::Server::Tiny::Handler {
 
             my $lck = .key.lc;
             if ($lck eq 'connection') {
-                if $!use-keepalive && .value.lc ne 'keep-alive' {
-                    $!use-keepalive = False;
+                if .value.lc eq 'upgrade' {
+                    $!connection-upgrade = True;
+                    $resp_string ~= "{.key}: {.value}\r\n";
+                } else {
+                    if $!use-keepalive && .value.lc ne 'keep-alive' {
+                        $!use-keepalive = False;
+                    }
                 }
             } else {
                 $resp_string ~= "{.key}: {.value}\r\n";
@@ -279,10 +292,6 @@ my class HTTP::Server::Tiny::Handler {
         }
         unless %send_headers<date> {
             $resp_string ~= "date: {http-date}\r\n";
-        }
-
-        my sub status-with-no-entity-body(int $status) {
-            return $status < 200 || $status == 204 || $status == 304;
         }
 
         # try to set content-length when keepalive can be used, or disable it
@@ -318,11 +327,13 @@ my class HTTP::Server::Tiny::Handler {
         } elsif $!protocol eq 'HTTP/1.1' {
             if %send_headers<content-length>.defined || %send_headers<transfer-encoding>.defined {
                 # ok
-            } elsif !status-with-no-entity-body($status) {
+            } elsif !status-with-no-entity-body(+$status) {
                 $resp_string ~= "Transfer-Encoding: chunked\x0d\x0a";
                 $use-chunked = True;
             }
-            $resp_string ~= "Connection: close\x0d\x0a" unless $!use-keepalive; # fmm
+            if !$!use-keepalive && !$!connection-upgrade {
+                $resp_string ~= "Connection: close\x0d\x0a";
+            }
         }
         $resp_string ~= "\r\n";
         
@@ -332,34 +343,6 @@ my class HTTP::Server::Tiny::Handler {
         await $.conn.write($resp);
 
         debug "sent header";
-
-        my sub scan-psgi-body($body) {
-            gather {
-                if $body ~~ Array {
-                    for @($body) -> $elem {
-                        if $elem ~~ Blob {
-                            take $elem;
-                        } elsif $elem ~~ Str {
-                            take $elem.encode;
-                        } else {
-                            die "response must be Array[Blob]. But {$elem.perl}";
-                        }
-                    }
-                } elsif $body ~~ IO::Handle {
-                    until $body.eof {
-                        take $body.read(1024);
-                    }
-                    $body.close;
-                } elsif $body ~~ Channel {
-                    while my $got = $body.receive {
-                        take $got;
-                    }
-                    CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
-                } else {
-                    die "3rd element of response object must be instance of Array or IO::Handle or Channel";
-                }
-            }
-        }
 
         for scan-psgi-body($body) -> Blob $got {
             next if $got.bytes == 0;
@@ -405,11 +388,10 @@ my class HTTP::Server::Tiny::Handler {
 
 has $.port = 80;
 has $.host = '127.0.0.1';
-# XXX how do i get String replesentation of package name in right way?
-has Str $.server-software = $?PACKAGE.perl;
+has Str $.server-software = "HTTP::Server::Tiny";
 has $.max-keepalive-reqs = 1;
 
-sub info($message) {
+my sub info($message) {
     say "[INFO] [{$*PID}] [{$*THREAD.id}] $message";
 }
 
@@ -426,8 +408,74 @@ my multi sub error(Str $err) {
     say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err";
 }
 
+# Plack::Util::content_length
+my sub content-length($body) {
+    return Nil unless defined $body;
+    if $body ~~ Array {
+        my $cl = 0;
+        for @($body) {
+            given $_ {
+                when Str {
+                    $cl += .encode().bytes;
+                }
+                when Blob {
+                    $cl += .bytes;
+                }
+                default {
+                    die "unsupported response type: {.gist}";
+                }
+            }
+        }
+        return $cl;
+    } elsif $body ~~ IO::Handle {
+        return $body.s;
+    }
+}
 
-method run(HTTP::Server::Tiny:D: Callable $app) {
+my sub status-with-no-entity-body(int $status) {
+    return $status < 200 || $status == 204 || $status == 304;
+}
+
+sub take-blobified($elem) {
+    if $elem ~~ Blob {
+        take $elem;
+    } elsif $elem ~~ Mu {
+        take $elem.Str.encode;
+    } else {
+        die "response must be Array[Blob]. But {$elem.perl}";
+    }
+}
+
+my sub scan-psgi-body($body) {
+    gather {
+        if $body ~~ Array {
+            for @($body) -> $elem {
+                take-blobified $elem;
+            }
+        } elsif $body ~~ IO::Handle {
+            until $body.eof {
+                take $body.read(1024);
+            }
+            $body.close;
+        } elsif $body ~~ Channel {
+            while my $got = $body.receive {
+                take-blobified $got;
+            }
+            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
+        } elsif $body ~~ Supply {
+            my $ch = $body.Channel;
+            while my $got = $ch.receive {
+                take-blobified $got;
+            }
+            CATCH { when X::Channel::ReceiveOnClosed { debug('closed channel'); } }
+        } else {
+            die "3rd element of response object must be instance of Array or IO::Handle or Channel";
+        }
+    }
+}
+
+
+method run(HTTP::Server::Tiny:D: Callable $app, Promise :$control-promise = Promise.new) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
     # -- tokuhirom@20151003
@@ -439,6 +487,10 @@ method run(HTTP::Server::Tiny:D: Callable $app) {
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
             self!handler($conn, $app);
+        }
+        whenever $control-promise {
+            debug("Exiting on control promise");
+            done;
         }
     }
 }
@@ -457,7 +509,7 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
         }
     }
 
-    my $bs = $conn.bytes-supply;
+    my $bs = $conn.Supply(:bin);
     my $pipelined_buf;
     my $handler = HTTP::Server::Tiny::Handler.new(
         use-keepalive      => $.max-keepalive-reqs != 1,
@@ -474,16 +526,18 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
 
             $handler.handle($got);
             if $handler.sent-response {
-                debug 'sent response';
+                debug 'sent response' if DEBUGGING;
                 $handler.close();
                 if $handler.use-keepalive {
                     debug "use keepalive for next request";
                     $handler = $handler.next-request;
                 } else {
-                    $conn.close;
+                    debug 'closing connection' if DEBUGGING;
+                    try $conn.close;
+                    debug 'closed connection' if DEBUGGING;
                 }
             }
-            CATCH { default { error($_); $conn.close; } };
+            CATCH { default { error($_); try $conn.close; } };
         },
         quit => { debug("QUIT") },
         done => { debug "DONE" },
@@ -533,9 +587,12 @@ HTTP::Server::Tiny is a standalone HTTP/1.1 web server for perl6.
 
 Create new instance.
 
-=item C<$server.run(Callable $app)>
+=item C<$server.run(Callable $app, Promise :$control-promise)>
 
-Run http server with P6SGI app.
+Run http server with P6SGI app C<$app>. 
+
+If the optional named parameter C<control-promise> is provided with a
+C<Promise> then the server loop will be quit when the promise is kept.
 
 =head1 TODO
 
@@ -543,7 +600,7 @@ Run http server with P6SGI app.
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright 2015 Tokuhiro Matsuno <tokuhirom@gmail.com>
+Copyright 2015, 2016 Tokuhiro Matsuno <tokuhirom@gmail.com>
 
 This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
 
