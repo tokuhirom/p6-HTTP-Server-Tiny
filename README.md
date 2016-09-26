@@ -35,9 +35,12 @@ METHODS
 
 Create new instance.
 
-  * `$server.run(Callable $app)`
+  * `$server.run(Callable $app, Promise :$control-promise)`
 
-Run http server with P6SGI app.
+Run http server with P6SGI app. The named parameter ```control-promise```
+if provided, can be _kept_ to quit the server loop, which may be useful
+if the server is run asynchronously to the main thread of execution in
+an application.
 
 TODO
 ====
@@ -47,6 +50,6 @@ TODO
 COPYRIGHT AND LICENSE
 =====================
 
-Copyright 2015 Tokuhiro Matsuno <tokuhirom@gmail.com>
+Copyright 2015, 2016 Tokuhiro Matsuno <tokuhirom@gmail.com>
 
 This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
