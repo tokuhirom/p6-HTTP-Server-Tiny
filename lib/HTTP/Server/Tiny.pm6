@@ -455,7 +455,7 @@ my sub scan-psgi-body($body) {
 }
 
 
-method run(HTTP::Server::Tiny:D: Callable $app) {
+method run(HTTP::Server::Tiny:D: Callable $app, Promise :$control-promise = Promise.new) {
     # moarvm doesn't handle SIGPIPE correctly. Without this,
     # perl6 exit without any message.
     # -- tokuhirom@20151003
@@ -467,6 +467,9 @@ method run(HTTP::Server::Tiny:D: Callable $app) {
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
             self!handler($conn, $app);
+        }
+        whenever $control-promise {
+            done;
         }
     }
 }
