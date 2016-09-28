@@ -10,3 +10,6 @@ install:
 script:
   - PERL6LIB=$PWD/lib prove -e perl6 -r t/
 sudo: false
+matrix:
+   allow_failures:
+      - os: osx
