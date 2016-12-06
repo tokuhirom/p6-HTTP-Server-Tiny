@@ -13,15 +13,17 @@ my $port = 15555;
 
 my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
+my $channel = Channel.new;
+
+start {
+    for 1..100 {
+                $channel.send($_.Str.encode('utf-8'));
+    }
+    $channel.close;
+};
+
 Thread.start({
     $server.run(sub ($env) {
-        my $channel = Channel.new;
-        start {
-            for 1..100 {
-                $channel.send($_.Str.encode('utf-8'));
-            }
-            $channel.close;
-        };
         return 200, ['Content-Type' => 'text/plain'], $channel
     });
 }, :app_lifetime);
