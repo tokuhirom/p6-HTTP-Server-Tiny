@@ -343,7 +343,7 @@ my class HTTP::Server::Tiny::Handler {
             }
         }
         $resp_string ~= "\r\n";
-        
+
         # TODO combine response header and small request body
 
         my $resp = $resp_string.encode('ascii');
@@ -408,7 +408,7 @@ my sub debug($message) {
 }
 
 my multi sub error(Exception $err) {
-    say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err {$err.backtrace.full}";
+    say "[ERROR] [{$*PID}] [{$*THREAD.id}] $err {$err.backtrace}";
 }
 
 my multi sub error(Str $err) {
@@ -494,6 +494,10 @@ method run(HTTP::Server::Tiny:D: Callable $app, Promise :$control-promise = Prom
     react {
         whenever IO::Socket::Async.listen($.host, $.port) -> $conn {
             self!handler($conn, $app);
+            QUIT {
+                error($_);
+                done;
+            }
         }
         whenever $control-promise {
             debug("Exiting on control promise");
@@ -526,7 +530,7 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
         app                => $app,
         host               => $.host,
         port               => $.port,
-    );                  
+    );
     $bs.tap(
         -> $got {
             debug "got chunk";
@@ -596,7 +600,7 @@ Create new instance.
 
 =item C<$server.run(Callable $app, Promise :$control-promise)>
 
-Run http server with P6SGI app C<$app>. 
+Run http server with P6SGI app C<$app>.
 
 If the optional named parameter C<control-promise> is provided with a
 C<Promise> then the server loop will be quit when the promise is kept.
