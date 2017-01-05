@@ -12,7 +12,12 @@ SYNOPSIS
 
     my $port = 8080;
 
-    HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port).run(sub ($env) {
+    # Only listen for connections from the local host
+    # if you want this to be accessible from another
+    # host then change this to '0.0.0.0'
+    my $host = '127.0.0.1'; 
+
+    HTTP::Server::Tiny.new(:$host , :$port).run(sub ($env) {
         my $channel = Channel.new;
         start {
             for 1..100 {
