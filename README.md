@@ -8,6 +8,7 @@ HTTP::Server::Tiny - a simple HTTP server for Perl6
 SYNOPSIS
 ========
 
+```perl6
     use HTTP::Server::Tiny;
 
     my $port = 8080;
@@ -27,6 +28,7 @@ SYNOPSIS
         };
         return 200, ['Content-Type' => 'text/plain'], $channel
     });
+```
 
 DESCRIPTION
 ===========
