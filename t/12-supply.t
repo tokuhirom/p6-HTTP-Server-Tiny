@@ -23,6 +23,7 @@ Thread.start({
 wait_port($port);
 my $prog = $*PROGRAM.parent.child('bin/test-client').Str;
 
-my $resp = run($*EXECUTABLE.Str, $prog, $port, :out).out.slurp-rest;
+my @include = $*REPO.repo-chain.map(*.path-spec);
+my $resp = run($*EXECUTABLE, '-I' «~« @include, $prog, $port, :out).out.slurp-rest;
 is($resp.chomp, "123456789101112131415161718192021222324252627282930313233343536373839404142434445464748495051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899100");
 
