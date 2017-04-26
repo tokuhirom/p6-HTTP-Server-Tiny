@@ -1,5 +1,6 @@
 {
   "name" : "HTTP::Server::Tiny",
+  "license" : "Artistic-2.0",
   "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
   "perl" : "6.c",
   "build-depends" : [ ],
