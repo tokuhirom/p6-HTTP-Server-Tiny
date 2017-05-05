@@ -25,6 +25,7 @@ start {
     for 1..100 {
                 $channel.send($_.Str.encode('utf-8'));
     }
+    sleep 0.1;
     $channel.close;
     ok True, "Filled channel";
 }
