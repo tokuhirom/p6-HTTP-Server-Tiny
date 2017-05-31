@@ -44,7 +44,7 @@ Create new instance.
 
   * `$server.run(Callable $app, Promise :$control-promise)`
 
-Run http server with P6SGI app. The named parameter ```control-promise```
+Run http server with P6W app. The named parameter ```control-promise```
 if provided, can be _kept_ to quit the server loop, which may be useful
 if the server is run asynchronously to the main thread of execution in
 an application.

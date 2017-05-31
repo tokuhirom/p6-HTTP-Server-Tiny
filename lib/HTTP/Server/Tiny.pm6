@@ -121,9 +121,9 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_NAME> = $.host;
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
-            %!env<p6sgi.errors> = $*ERR;
-            %!env<p6sgi.url-scheme> = 'http';
-            %!env<p6sgix.io>     = $!conn; # for websocket support
+            %!env<p6w.errors> = $*ERR;
+            %!env<p6w.url-scheme> = 'http';
+            %!env<p6wx.io>     = $!conn; # for websocket support
 
             # TODO: REMOTE_ADDR
             # TODO: REMOTE_PORT
@@ -170,12 +170,12 @@ my class HTTP::Server::Tiny::Handler {
 
     method !parse-body() {
         if $!content-length.defined {
-            %!env<p6sgi.input> //= self!create-temp-buffer($!content-length);
+            %!env<p6w.input> //= self!create-temp-buffer($!content-length);
 
             debug "got {$!buf.elems} bytes";
             my $write-bytes = $!buf.elems min $!content-length;
             if $write-bytes {
-                %!env<p6sgi.input>.write($!buf.subbuf(0, $write-bytes)); # XXX blocking
+                %!env<p6w.input>.write($!buf.subbuf(0, $write-bytes)); # XXX blocking
                 $!wrote-body-size += $write-bytes;
                 $!buf = $!buf.subbuf($write-bytes);
                 debug "remains { $!content-length - $!wrote-body-size }";
@@ -186,7 +186,7 @@ my class HTTP::Server::Tiny::Handler {
                 return self!run-app();
             }
         } elsif $!chunked {
-            %!env<p6sgi.input> //= self!create-temp-buffer(Nil);
+            %!env<p6w.input> //= self!create-temp-buffer(Nil);
 
             my $wrote = 0;
             PROCESS_CHUNK: loop {
@@ -204,7 +204,7 @@ my class HTTP::Server::Tiny::Handler {
                         }
                         if $end_pos+2+$chunk_len <= $!buf.elems {
                             debug 'writing temp file';
-                            %!env<p6sgi.input>.write($!buf.subbuf($end_pos+2, $chunk_len));
+                            %!env<p6w.input>.write($!buf.subbuf($end_pos+2, $chunk_len));
                             $wrote += $chunk_len;
                             $!buf = $!buf.subbuf($end_pos+2 + $chunk_len);
                             next PROCESS_CHUNK;
@@ -214,7 +214,7 @@ my class HTTP::Server::Tiny::Handler {
                 return; # partial
             }
         } else {
-            %!env<p6sgi.input> = IO::Blob.new;
+            %!env<p6w.input> = IO::Blob.new;
 
             if $!buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
                 $!use-keepalive = True; # force keep-alive
@@ -242,7 +242,7 @@ my class HTTP::Server::Tiny::Handler {
     }
 
     method !run-app() {
-        %!env<p6sgi.input>.seek(0,SeekFromBeginning); # rewind
+        %!env<p6w.input>.seek(0,SeekFromBeginning); # rewind
 
         my ($status, $headers, $body) = sub {
             CATCH {
@@ -384,7 +384,7 @@ my class HTTP::Server::Tiny::Handler {
 
     # free resources.
     method close() {
-        try %!env<p6sgi.input>.close;
+        try %!env<p6w.input>.close;
     }
 
     method DESTROY() {
@@ -607,7 +607,7 @@ Create new instance.
 
 =item C<$server.run(Callable $app, Promise :$control-promise)>
 
-Run http server with P6SGI app C<$app>.
+Run http server with P6W app C<$app>.
 
 If the optional named parameter C<control-promise> is provided with a
 C<Promise> then the server loop will be quit when the promise is kept.

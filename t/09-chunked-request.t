@@ -15,7 +15,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 Thread.start({
     $server.run(sub ($env) {
-        my $body = $env<p6sgi.input>.slurp-rest(:bin);
+        my $body = $env<p6w.input>.slurp-rest(:bin);
         return 200, ['Content-Type' => 'text/plain'], [$body]
     });
 }, :app_lifetime);
