@@ -58,6 +58,10 @@ my class TempFile {
         debug 'destroy tempfile';
         self.close
     }
+
+    method Supply() {
+        return $.fh.Supply;
+    }
 }
 
 my class HTTP::Server::Tiny::Handler {
@@ -67,6 +71,7 @@ my class HTTP::Server::Tiny::Handler {
     has buf8 $.buf .= new;
     has Bool $!header-parsed = False;
     has %!env;
+    has $!input;
     has $!chunked;
     has $!content-length;
     has $.conn is required;
@@ -170,12 +175,12 @@ my class HTTP::Server::Tiny::Handler {
 
     method !parse-body() {
         if $!content-length.defined {
-            %!env<p6w.input> //= self!create-temp-buffer($!content-length);
+            $!input //= self!create-temp-buffer($!content-length);
 
             debug "got {$!buf.elems} bytes";
             my $write-bytes = $!buf.elems min $!content-length;
             if $write-bytes {
-                %!env<p6w.input>.write($!buf.subbuf(0, $write-bytes)); # XXX blocking
+                $!input.write($!buf.subbuf(0, $write-bytes)); # XXX blocking
                 $!wrote-body-size += $write-bytes;
                 $!buf = $!buf.subbuf($write-bytes);
                 debug "remains { $!content-length - $!wrote-body-size }";
@@ -186,7 +191,7 @@ my class HTTP::Server::Tiny::Handler {
                 return self!run-app();
             }
         } elsif $!chunked {
-            %!env<p6w.input> //= self!create-temp-buffer(Nil);
+            $!input //= self!create-temp-buffer(Nil);
 
             my $wrote = 0;
             PROCESS_CHUNK: loop {
@@ -204,7 +209,7 @@ my class HTTP::Server::Tiny::Handler {
                         }
                         if $end_pos+2+$chunk_len <= $!buf.elems {
                             debug 'writing temp file';
-                            %!env<p6w.input>.write($!buf.subbuf($end_pos+2, $chunk_len));
+                            $!input.write($!buf.subbuf($end_pos+2, $chunk_len));
                             $wrote += $chunk_len;
                             $!buf = $!buf.subbuf($end_pos+2 + $chunk_len);
                             next PROCESS_CHUNK;
@@ -214,7 +219,7 @@ my class HTTP::Server::Tiny::Handler {
                 return; # partial
             }
         } else {
-            %!env<p6w.input> = IO::Blob.new;
+            $!input //= IO::Blob.new;
 
             if $!buf.decode('ascii') ~~ /^[GET|HEAD]/ { # pipeline
                 $!use-keepalive = True; # force keep-alive
@@ -242,7 +247,8 @@ my class HTTP::Server::Tiny::Handler {
     }
 
     method !run-app() {
-        %!env<p6w.input>.seek(0,SeekFromBeginning); # rewind
+        $!input.seek(0,SeekFromBeginning); # rewind;
+        %!env<p6w.input> = $!input.Supply;
 
         my ($status, $headers, $body) = sub {
             CATCH {
