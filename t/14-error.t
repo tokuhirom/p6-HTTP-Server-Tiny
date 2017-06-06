@@ -20,7 +20,7 @@ Thread.start({
     $server.run(sub ($env) {
         $env<p6w.errors>.emit("foo");
         $env<p6w.errors>.emit("bar");
-        $env<p6w.errors>.emit("baz\nval\n");
+        $env<p6w.errors>.emit("baz\nval");
         return
             200,
             ['Content-Type' => 'application/json'],
@@ -36,4 +36,4 @@ ok $resp<success>;
 is $resp<content>, 'hello';
 
 $io.seek(0);
-is $io.slurp-rest, "foobarbaz\nval\n";
+is $io.slurp-rest, "foo\nbar\nbaz\nval\n";
