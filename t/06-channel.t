@@ -17,7 +17,7 @@ my $channel = Channel.new;
 
 Thread.start({
     $server.run(sub ($env) {
-        return 200, ['Content-Type' => 'text/plain'], $channel
+        return start { 200, ['Content-Type' => 'text/plain'], $channel };
     });
 }, :app_lifetime);
 

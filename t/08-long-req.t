@@ -17,7 +17,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 Thread.start({
     $server.run(sub ($env) {
         my $body = await $env<p6w.input>.Promise;
-        return 200, ['Content-Type' => 'text/plain'], [$body]
+        return start { 200, ['Content-Type' => 'text/plain'], [$body] };
     });
 }, :app_lifetime);
 

@@ -14,11 +14,11 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 Thread.start({
     $server.run(sub ($env) {
-        return
+        return start {
             200,
             ['Content-Type' => 'application/json'],
             ['hello']
-        ;
+        };
     });
 }, :app_lifetime);
 
