@@ -274,6 +274,7 @@ my class HTTP::Server::Tiny::Handler {
             if $result ~~ Promise {
                 return $result.result;
             }
+            warn "P6W app must return Promise";
             return $result;
         }();
         debug "ran app: $status" if DEBUGGING;

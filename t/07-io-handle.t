@@ -17,7 +17,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 Thread.start({
     $server.run(sub ($env) {
         my $fh = open 't/07-io-handle.t', :r;
-        return 200, ['Content-Type' => 'text/plain'], $fh
+        return start { 200, ['Content-Type' => 'text/plain'], $fh };
     });
 }, :app_lifetime);
 

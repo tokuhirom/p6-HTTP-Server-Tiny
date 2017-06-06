@@ -20,11 +20,11 @@ Thread.start({
             QUERY_STRING => $env<QUERY_STRING>,
         });
 
-        return (
+        return start {
             200,
             ['Content-Type' => 'application/json'],
             [$json.encode('utf-8')]
-        );
+        };
     });
 }, :app_lifetime);
 

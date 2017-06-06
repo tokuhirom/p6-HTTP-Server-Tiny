@@ -16,7 +16,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 Thread.start({
     $server.run(sub ($env) {
         my $s = Supply.from-list((1..100).map: *.Str.encode);
-        return 200, ['Content-Type' => 'text/plain'], $s;
+        return start { 200, ['Content-Type' => 'text/plain'], $s };
     });
 }, :app_lifetime);
 

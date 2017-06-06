@@ -16,7 +16,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 
 my $thr = Thread.start({
     $server.run(sub ($env) {
-        return 200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]
+        return start { 200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')] }
     });
 }, :app_lifetime);
 
