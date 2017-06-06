@@ -21,11 +21,11 @@ Thread.start({
         $env<p6w.errors>.emit("foo");
         $env<p6w.errors>.emit("bar");
         $env<p6w.errors>.emit("baz\nval");
-        return
+        return start {
             200,
             ['Content-Type' => 'application/json'],
             ['hello']
-        ;
+        };
     });
 }, :app_lifetime);
 
