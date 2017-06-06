@@ -9,6 +9,19 @@ my Buf $CRLF = Buf.new(0x0d, 0x0a);
 
 my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
 
+my class HandleSupplier {
+    has IO::Handle $.handle;
+    has $.supplier;
+
+    method new($handle) {
+        my $supplier = Supplier.new;
+        my $self = self.bless(supplier => $supplier, handle => $handle);
+        my $supply = $supplier.Supply;
+        $supply.tap(-> $v { $self.handle.print($v) });
+        return $self;
+    }
+}
+
 my class TempFile {
     has $.filename;
     has $.fh;
@@ -126,7 +139,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_NAME> = $.host;
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
-            %!env<p6w.errors> = $*ERR;
+            %!env<p6w.errors> = HandleSupplier.new($*ERR).supplier;
             %!env<p6w.url-scheme> = 'http';
             %!env<p6wx.io>     = $!conn; # for websocket support
 
