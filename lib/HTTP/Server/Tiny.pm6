@@ -142,6 +142,8 @@ my class HTTP::Server::Tiny::Handler {
             %!env<p6w.errors> = HandleSupplier.new($*ERR).supplier;
             %!env<p6w.url-scheme> = 'http';
             %!env<p6wx.io>     = $!conn; # for websocket support
+            %!env<p6w.protocol.support> = set('request-response', 'psgi');
+            %!env<p6w.protocol.enabled> = SetHash('request-response', 'psgi');
 
             # TODO: REMOTE_ADDR
             # TODO: REMOTE_PORT
