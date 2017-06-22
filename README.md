@@ -49,6 +49,11 @@ if provided, can be _kept_ to quit the server loop, which may be useful
 if the server is run asynchronously to the main thread of execution in
 an application.
 
+VERSIONING RULE
+===============
+
+This module respects [Semantic versioning](http://semver.org/)
+
 TODO
 ====
 
