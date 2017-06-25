@@ -1,24 +1,26 @@
 {
-  "name" : "HTTP::Server::Tiny",
-  "license" : "Artistic-2.0",
-  "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
-  "perl" : "6.c",
+  "authors" : [
+    "Tokuhiro Matsuno"
+  ],
   "build-depends" : [ ],
-  "provides" : {
-    "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6"
-  },
   "depends" : [
     "HTTP::Parser",
     "HTTP::Status",
     "IO::Blob"
   ],
   "description" : "a simple HTTP server for Perl6",
+  "license" : "Artistic-2.0",
+  "name" : "HTTP::Server::Tiny",
+  "perl" : "6.c",
+  "provides" : {
+    "HTTP::Server::Tiny" : "lib/HTTP/Server/Tiny.pm6"
+  },
+  "resources" : [ ],
+  "source-url" : "git://github.com/tokuhirom/p6-HTTP-Server-Tiny.git",
+  "tags" : [ ],
   "test-depends" : [
     "JSON::Fast",
     "HTTP::Tinyish"
   ],
-  "version" : "*",
-  "authors" : [
-    "Tokuhiro Matsuno"
-  ]
+  "version" : "0.0.1"
 }

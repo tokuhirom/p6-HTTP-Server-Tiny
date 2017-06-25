@@ -1,5 +1,5 @@
 use v6;
-unit class HTTP::Server::Tiny;
+unit class HTTP::Server::Tiny:ver<0.0.1>;
 
 use HTTP::Parser; # parse-http-request
 use IO::Blob;
