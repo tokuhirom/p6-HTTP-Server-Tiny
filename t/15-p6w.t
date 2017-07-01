@@ -17,7 +17,7 @@ my $server = HTTP::Server::Tiny.new(host => '127.0.0.1', port => $port);
 my $thr = Thread.start({
     $server.run(sub ($env) {
         isa-ok $env<p6w.version>, Version;
-        is $env<p6w.multithread>, False;
+        is $env<p6w.multithread>, True;
         is $env<p6w.multiprocess>, False;
         is $env<p6w.run-once>, False;
         return 200, ['Content-Type' => 'text/plain'], ["hello\n".encode('utf-8')]
