@@ -632,10 +632,17 @@ Create new instance.
 
 =item C<$server.run(Callable $app, Promise :$control-promise)>
 
-Run http server with P6W app C<$app>.
+Run http server with P6W app. The named parameter C<control-promise>
+if provided, can be I<kept> to quit the server loop, which may be useful
+if the server is run asynchronously to the main thread of execution in
+an application.
 
 If the optional named parameter C<control-promise> is provided with a
 C<Promise> then the server loop will be quit when the promise is kept.
+
+=head1 VERSIONING RULE
+
+This module respects L<Semantic versioning|http://semver.org/>
 
 =head1 TODO
 

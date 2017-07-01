@@ -8,7 +8,6 @@ HTTP::Server::Tiny - a simple HTTP server for Perl6
 SYNOPSIS
 ========
 
-```perl6
     use HTTP::Server::Tiny;
 
     my $port = 8080;
@@ -16,7 +15,7 @@ SYNOPSIS
     # Only listen for connections from the local host
     # if you want this to be accessible from another
     # host then change this to '0.0.0.0'
-    my $host = '127.0.0.1'; 
+    my $host = '127.0.0.1';
 
     HTTP::Server::Tiny.new(:$host , :$port).run(sub ($env) {
         my $channel = Channel.new;
@@ -28,7 +27,6 @@ SYNOPSIS
         };
         return 200, ['Content-Type' => 'text/plain'], $channel
     });
-```
 
 DESCRIPTION
 ===========
@@ -44,10 +42,9 @@ Create new instance.
 
   * `$server.run(Callable $app, Promise :$control-promise)`
 
-Run http server with P6W app. The named parameter ```control-promise```
-if provided, can be _kept_ to quit the server loop, which may be useful
-if the server is run asynchronously to the main thread of execution in
-an application.
+Run http server with P6W app. The named parameter `control-promise` if provided, can be *kept* to quit the server loop, which may be useful if the server is run asynchronously to the main thread of execution in an application.
+
+If the optional named parameter `control-promise` is provided with a `Promise` then the server loop will be quit when the promise is kept.
 
 VERSIONING RULE
 ===============
