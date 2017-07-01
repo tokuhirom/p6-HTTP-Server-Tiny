@@ -3,3 +3,4 @@
 /src/Makefile
 /.panda-work
 .precomp
+/HTTP-Server-Tiny-*
