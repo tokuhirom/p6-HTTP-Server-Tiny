@@ -140,7 +140,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<SERVER_PORT> = $.port;
             %!env<SCRIPT_NAME> = '';
             %!env<p6w.version> = Version.new('v0.7.Draft');
-            %!env<p6w.multithread> = False;
+            %!env<p6w.multithread> = True;
             %!env<p6w.multiprocess> = False;
             %!env<p6w.run-once> = False;
             %!env<p6w.errors> = HandleSupplier.new($*ERR).supplier;
