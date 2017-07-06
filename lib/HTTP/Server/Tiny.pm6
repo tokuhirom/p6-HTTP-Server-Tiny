@@ -406,15 +406,8 @@ my class HTTP::Server::Tiny::Handler {
         }
     }
 
-
-    # free resources.
-    method close() {
-        try %!env<p6w.input>.close;
-    }
-
     method DESTROY() {
         debug "Destroying handler";
-        self.close;
     }
 }
 
@@ -563,7 +556,6 @@ method !handler(IO::Socket::Async $conn, Callable $app) {
             $handler.handle($got);
             if $handler.sent-response {
                 debug 'sent response' if DEBUGGING;
-                $handler.close();
                 if $handler.use-keepalive {
                     debug "use keepalive for next request";
                     $handler = $handler.next-request;
