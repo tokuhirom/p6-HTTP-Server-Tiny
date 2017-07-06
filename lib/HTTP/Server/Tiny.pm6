@@ -4,23 +4,11 @@ unit class HTTP::Server::Tiny:ver<0.0.1>;
 use HTTP::Parser; # parse-http-request
 use IO::Blob;
 use HTTP::Status;
+use HandleSupplier;
 
 my Buf $CRLF = Buf.new(0x0d, 0x0a);
 
 my constant DEBUGGING = %*ENV<HST_DEBUG>.Bool;
-
-my class HandleSupplier {
-    has IO::Handle $.handle;
-    has $.supplier;
-
-    method new($handle) {
-        my $supplier = Supplier.new;
-        my $self = self.bless(supplier => $supplier, handle => $handle);
-        my $supply = $supplier.Supply;
-        $supply.tap(-> $v { $self.handle.say($v) });
-        return $self;
-    }
-}
 
 my class TempFile {
     has $.filename;
@@ -143,7 +131,7 @@ my class HTTP::Server::Tiny::Handler {
             %!env<p6w.multithread> = True;
             %!env<p6w.multiprocess> = False;
             %!env<p6w.run-once> = False;
-            %!env<p6w.errors> = HandleSupplier.new($*ERR).supplier;
+            %!env<p6w.errors> = supplier-for-handle($*ERR);
             %!env<p6w.url-scheme> = 'http';
             %!env<p6wx.io>     = $!conn; # for websocket support
             %!env<p6w.protocol.support> = set('request-response', 'psgi');
