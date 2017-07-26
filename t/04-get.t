@@ -7,7 +7,7 @@ use Test::TCP;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
-plan 1;
+plan 2;
 
 my $port = 15555;
 
@@ -32,11 +32,16 @@ wait_port($port);
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
 my $dat = do {
     CATCH { default { say "ERROR: $_"; $resp.perl.say; fail; } }
-    from-json($resp<content>);
+
+    if is($resp<status>, 200, "Response status") {
+      from-json($resp<content>);
+    }
+    else {
+      Any
+    }
 };
 my $expected = {
     PATH_INFO    => '/goo',
     QUERY_STRING => 'foo=bar',
 };
-is-deeply $dat, $expected;
-
+is-deeply $dat, $expected, "Response content";

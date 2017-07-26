@@ -6,7 +6,7 @@ use Test::TCP;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
-plan 1;
+plan 2;
 
 my $port = 15555;
 
@@ -20,5 +20,5 @@ Thread.start({
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
-is $resp<content>, 'Internal Server Error!';
-
+is $resp<status>, 500, "Reponse status (Internal server error)";
+is $resp<content>, 'Internal Server Error!', "Response content";

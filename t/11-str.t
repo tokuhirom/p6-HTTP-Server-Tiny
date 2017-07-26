@@ -6,7 +6,7 @@ use Test::TCP;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
-plan 2;
+plan 3;
 
 my $port = 15555;
 
@@ -25,6 +25,6 @@ Thread.start({
 wait_port($port);
 
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/goo?foo=bar");
+is $resp<status>, 200, "Reponse status";
 ok $resp<success>;
-is $resp<content>, 'hello';
-
+is $resp<content>, 'hello', "response body";

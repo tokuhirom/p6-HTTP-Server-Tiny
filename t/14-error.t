@@ -7,7 +7,7 @@ use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 use IO::Blob;
 
-plan 3;
+plan 4;
 
 my $port = 15555;
 
@@ -32,6 +32,7 @@ Thread.start({
 wait_port($port);
 
 my $resp = HTTP::Tinyish.new.get("http://127.0.0.1:$port/");
+is $resp<status>, 200, "Reponse status";
 ok $resp<success>;
 is $resp<content>, 'hello';
 
