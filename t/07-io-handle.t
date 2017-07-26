@@ -8,7 +8,7 @@ use Test::TCP;
 use HTTP::Server::Tiny;
 use HTTP::Tinyish;
 
-plan 1;
+plan 2;
 
 my $port = 15555;
 
@@ -23,9 +23,9 @@ Thread.start({
 
 wait_port($port);
 my $resp = HTTP::Tinyish.new.post("http://127.0.0.1:$port/",
-   headers => { 
+   headers => {
         'content-type' => 'application/x-www-form-urlencoded'
     },
     content => 'foo=bar');
-ok $resp<content> ~~ /HELLO/;
-
+is $resp<status>, 200, "Reponse status";
+ok $resp<content> ~~ /HELLO/, "Response content";
