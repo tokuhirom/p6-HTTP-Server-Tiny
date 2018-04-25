@@ -183,9 +183,9 @@ my class HTTP::Server::Tiny::Handler {
                 !! False;
 
             $!header-parsed = True;
-        } elsif $header_len == -1 { # incomplete header
+        } elsif $header_len == -2 { # incomplete header
             debug 'incomplete header' unless DEBUGGING;
-        } elsif $header_len == -2 { # invalid request
+        } elsif $header_len == -1 { # invalid request
             self!send-response(400, [], ['Bad request']);
         } else {
             die "should not reach here";
